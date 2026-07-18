@@ -60,7 +60,6 @@ export default function Home() {
   const [clearArmed, setClearArmed] = useState(false);
   const [sentenceSuggestionsEnabled, setSentenceSuggestionsEnabled] = useState(true);
   const [expansionItems, setExpansionItems] = useState<ExpansionUtterance[]>([]);
-  const caregiverTapCount = useRef(0);
   const clearConfirmTimer = useRef<number | null>(null);
   const stripTapStartedAt = useRef<number | null>(null);
   const requestAbort = useRef<AbortController | null>(null);
@@ -470,11 +469,7 @@ export default function Home() {
   }
 
   function openCaregiverMode() {
-    caregiverTapCount.current += 1;
-    if (caregiverTapCount.current === 3) {
-      caregiverTapCount.current = 0;
-      setCaregiverMode(true);
-    }
+    setCaregiverMode(true);
   }
 
   if (caregiverMode) {
@@ -579,9 +574,10 @@ export default function Home() {
       </section>
 
       <footer className="app-footer">
-        <button className="caregiver-footer-entry" type="button" onClick={openCaregiverMode} aria-label="Caregiver tools">
-          Symbols by ARASAAC · CC BY-NC-SA 4.0
+        <button className="caregiver-footer-entry" type="button" onClick={openCaregiverMode}>
+          Caregiver mode
         </button>
+        <p>Symbols by ARASAAC · CC BY-NC-SA 4.0</p>
       </footer>
     </main>
   );

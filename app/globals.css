@@ -435,12 +435,18 @@ button:focus-visible {
   text-align: center;
 }
 
+.app-footer p {
+  margin: 10px 0 0;
+}
+
 .caregiver-footer-entry {
-  border: 0;
-  background: transparent;
-  padding: 10px;
-  color: inherit;
-  font: inherit;
+  min-height: 48px;
+  border: 2px solid #9db6d7;
+  border-radius: 999px;
+  background: #f4f8ff;
+  padding: 8px 16px;
+  color: #24456f;
+  font-weight: 800;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
