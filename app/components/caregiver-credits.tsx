@@ -5,11 +5,13 @@ export function CaregiverCredits({
   selectedVoice,
   onChangeVoice,
   onPreviewVoice,
+  onEndSession,
 }: {
   onClose: () => void;
   selectedVoice: VoiceId;
   onChangeVoice: (voice: VoiceId) => void;
   onPreviewVoice: (voice: VoiceId) => void;
+  onEndSession: () => void;
 }) {
   return (
     <main className="caregiver-screen">
@@ -58,6 +60,10 @@ export function CaregiverCredits({
           ))}
         </div>
       </section>
+
+      <button className="end-session" type="button" onClick={onEndSession}>
+        End this session
+      </button>
 
       <button className="caregiver-back" type="button" onClick={onClose}>
         Back to board

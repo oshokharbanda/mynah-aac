@@ -17,6 +17,14 @@ export type StoredPrediction = {
   tapped_suggestion_id: string | null;
 };
 
+export type StoredUtterance = {
+  id: string;
+  text: string;
+  tile_ids: string[];
+  phrase_id: string | null;
+  spoken_at: number;
+};
+
 interface MynahDatabase extends DBSchema {
   tileUsage: {
     key: string;
@@ -30,6 +38,10 @@ interface MynahDatabase extends DBSchema {
     key: string;
     value: { id: string; value: string };
   };
+  sessionUtterances: {
+    key: string;
+    value: StoredUtterance;
+  };
 }
 
 let database: ReturnType<typeof openDB<MynahDatabase>> | null = null;
@@ -40,7 +52,7 @@ function getDatabase() {
     throw new Error("IndexedDB is only available in the browser.");
   }
 
-  database ??= openDB<MynahDatabase>("mynah", 3, {
+  database ??= openDB<MynahDatabase>("mynah", 4, {
     upgrade(db) {
       if (!db.objectStoreNames.contains("tileUsage")) {
         db.createObjectStore("tileUsage", { keyPath: "id" });
@@ -50,6 +62,9 @@ function getDatabase() {
       }
       if (!db.objectStoreNames.contains("settings")) {
         db.createObjectStore("settings", { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains("sessionUtterances")) {
+        db.createObjectStore("sessionUtterances", { keyPath: "id" });
       }
     },
   });
@@ -121,4 +136,33 @@ export async function getVoicePreference() {
 export async function setVoicePreference(voice: VoiceId) {
   const db = await getDatabase();
   await db.put("settings", { id: "voice", value: voice });
+}
+
+export async function getSessionUtterances() {
+  const db = await getDatabase();
+  const utterances = await db.getAll("sessionUtterances");
+  return utterances.sort((left, right) => right.spoken_at - left.spoken_at).slice(0, 5);
+}
+
+export async function recordSessionUtterance(
+  utterance: Omit<StoredUtterance, "id" | "spoken_at">,
+) {
+  const db = await getDatabase();
+  const stored: StoredUtterance = {
+    ...utterance,
+    id: crypto.randomUUID(),
+    spoken_at: Date.now(),
+  };
+  const tx = db.transaction("sessionUtterances", "readwrite");
+  await tx.store.put(stored);
+  const all = await tx.store.getAll();
+  const older = all.sort((left, right) => right.spoken_at - left.spoken_at).slice(5);
+  await Promise.all(older.map((item) => tx.store.delete(item.id)));
+  await tx.done;
+  return getSessionUtterances();
+}
+
+export async function clearSessionUtterances() {
+  const db = await getDatabase();
+  await db.clear("sessionUtterances");
 }

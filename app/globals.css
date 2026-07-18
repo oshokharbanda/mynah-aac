@@ -77,6 +77,113 @@ button:focus-visible {
   letter-spacing: -0.04em;
 }
 
+.communication-tools {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.attention-actions {
+  position: sticky;
+  top: max(8px, env(safe-area-inset-top));
+  z-index: 10;
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 10px;
+  border-radius: 20px;
+  background: var(--paper);
+  padding: 6px 0;
+}
+
+.attention-button,
+.not-that-button,
+.urgent-phrase,
+.recent-utterances button,
+.end-session {
+  border: 0;
+  font-weight: 800;
+  line-height: 1.08;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The two persistent buttons are pill-shaped so they cannot be mistaken for word tiles. */
+.attention-button,
+.not-that-button {
+  min-height: 68px;
+  border-radius: 999px;
+  padding: 12px 16px;
+}
+
+.attention-button {
+  border: 3px solid #7d2f12;
+  background: #ffbf59;
+  color: #4a210b;
+  font-size: clamp(1rem, 4vw, 1.18rem);
+}
+
+.not-that-button {
+  border: 3px solid #765b91;
+  background: #eee6fb;
+  color: #392a4b;
+  font-size: clamp(0.91rem, 3.4vw, 1.08rem);
+}
+
+.urgent-phrases {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  border: 2px solid #dcaaa2;
+  border-radius: 18px;
+  background: #fff7f5;
+  padding: 10px;
+}
+
+.urgent-phrase {
+  min-height: 58px;
+  border: 2px solid #ca756b;
+  border-radius: 14px;
+  background: #fff;
+  padding: 8px;
+  color: #752f27;
+  font-size: clamp(0.92rem, 3.5vw, 1.08rem);
+}
+
+.say-again {
+  border: 2px solid #b7c9e2;
+  border-radius: 18px;
+  background: #f5f8ff;
+  padding: 10px;
+}
+
+.say-again p {
+  margin: 0 0 8px;
+  color: #28476c;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.recent-utterances {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.recent-utterances button {
+  min-height: 48px;
+  flex: 0 0 auto;
+  max-width: 220px;
+  overflow: hidden;
+  border: 2px solid #9db6d7;
+  border-radius: 999px;
+  background: #fff;
+  padding: 8px 12px;
+  color: #24456f;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sentence-area {
   display: grid;
   gap: 12px;
@@ -360,6 +467,16 @@ button:focus-visible {
   -webkit-tap-highlight-color: transparent;
 }
 
+.end-session {
+  min-height: 56px;
+  width: 100%;
+  margin-top: 18px;
+  border: 2px solid #ba786f;
+  border-radius: 15px;
+  background: #fff8f6;
+  color: #783a31;
+}
+
 @media (min-width: 600px) {
   .app-shell {
     padding-top: 32px;
@@ -380,5 +497,9 @@ button:focus-visible {
 
   .suggestion-tiles {
     grid-template-columns: repeat(4, minmax(96px, 1fr));
+  }
+
+  .urgent-phrases {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 }

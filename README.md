@@ -41,6 +41,8 @@ Each tile tap updates its `count` and `last_used_at` in IndexedDB through `idb`.
 
 Each of the 60 English tiles has a committed MP3 clip for each of three caregiver-selectable ElevenLabs voices. They live in `public/audio/en/<voice>/<tile_id>.mp3`, are pre-cached by the service worker, and play first on every tile tap. The selected voice is persisted in IndexedDB.
 
+The persistent attention and correction pills, plus six whole urgent phrases, are English-only pre-generated clips in `public/audio/en/<voice>/system`. They work offline and are intentionally not prediction candidates or vocabulary tiles. The five most recent spoken utterances are retained only for the current session in IndexedDB and can be cleared from caregiver tools.
+
 Sentence-strip playback requests a natural full-sentence MP3 from `/api/speak`. It falls back after 900ms, offline, or any error by playing the bundled tile clips in order with 120ms gaps; Web Speech is used only if cached audio itself is unavailable. Set `ELEVENLABS_API_KEY` in the production environment for `/api/speak`.
 
 ## Symbol attribution

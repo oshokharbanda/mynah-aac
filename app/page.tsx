@@ -2,11 +2,13 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CategoryTabs, CoreGrid, FringeGrid, SuggestionRow } from "@/app/components/board";
+import { CommunicationTools } from "@/app/components/communication-tools";
 import { CaregiverCredits } from "@/app/components/caregiver-credits";
-import { categories, coreTiles, fringeTiles, type CategoryId, type Tile } from "@/app/data/tiles";
+import { allTiles, categories, coreTiles, fringeTiles, type CategoryId, type Tile } from "@/app/data/tiles";
 import { interactionNow, recordInteractionMetric } from "@/app/lib/interaction-metrics";
 import { DEFAULT_VOICE, type VoiceId } from "@/app/lib/audio-voices";
-import { playSentenceWithFallback, playTileClip } from "@/app/lib/audio-playback";
+import { playCachedSentence, playPreGeneratedPhrase, playSentenceWithFallback, playTileClip } from "@/app/lib/audio-playback";
+import { phraseById } from "@/app/lib/quick-phrases";
 import {
   buildCandidates,
   predictionCacheKey,
@@ -16,15 +18,19 @@ import {
   type BoardPredictionResponse,
   type PredictionItem,
 } from "@/app/lib/predictions";
-import { prepareSpeechVoices } from "@/app/lib/speech";
+import { prepareSpeechVoices, speakText } from "@/app/lib/speech";
 import {
+  clearSessionUtterances,
   getTileUsage,
+  getSessionUtterances,
   markSuggestedTileTapped,
   getVoicePreference,
   createPredictionId,
   recordPrediction,
+  recordSessionUtterance,
   recordTileUse,
   setVoicePreference,
+  type StoredUtterance,
   type StoredTileUsage,
 } from "@/app/lib/tile-usage";
 
@@ -42,6 +48,7 @@ export default function Home() {
   const [suggestionItems, setSuggestionItems] = useState<PredictionItem[]>([]);
   const [usageByTile, setUsageByTile] = useState<Record<string, StoredTileUsage>>({});
   const [voice, setVoice] = useState<VoiceId>(DEFAULT_VOICE);
+  const [recentUtterances, setRecentUtterances] = useState<StoredUtterance[]>([]);
   const caregiverTapCount = useRef(0);
   const stripTapStartedAt = useRef<number | null>(null);
   const requestAbort = useRef<AbortController | null>(null);
@@ -67,6 +74,12 @@ export default function Home() {
 
   useEffect(() => {
     void prepareSpeechVoices();
+  }, []);
+
+  useEffect(() => {
+    void getSessionUtterances().then(setRecentUtterances).catch(() => {
+      // Repeat history is helpful, never a child-facing failure.
+    });
   }, []);
 
   useEffect(() => {
@@ -231,6 +244,35 @@ export default function Home() {
 
   function speakSentence() {
     void playSentenceWithFallback(spokenText, selectedTiles, voice, interactionNow());
+    rememberUtterance({ text: spokenText, tile_ids: selectedIds, phrase_id: null });
+  }
+
+  function rememberUtterance(utterance: Omit<StoredUtterance, "id" | "spoken_at">) {
+    void recordSessionUtterance(utterance)
+      .then(setRecentUtterances)
+      .catch(() => {
+        // The child can still communicate if private storage is unavailable.
+      });
+  }
+
+  function speakQuickPhrase(phraseId: string) {
+    const raisedVolume = phraseId === "attention" || phraseId === "not-that";
+    playPreGeneratedPhrase(phraseId, voice, raisedVolume);
+    const phrase = phraseById(phraseId);
+    if (phrase) rememberUtterance({ text: phrase.speech, tile_ids: [], phrase_id: phrase.id });
+  }
+
+  function replayUtterance(utterance: StoredUtterance) {
+    if (utterance.phrase_id) {
+      playPreGeneratedPhrase(utterance.phrase_id, voice, utterance.phrase_id === "attention" || utterance.phrase_id === "not-that");
+      return;
+    }
+    const tiles = utterance.tile_ids
+      .map((tileId) => allTiles.find((tile) => tile.id === tileId))
+      .filter((tile): tile is Tile => Boolean(tile));
+    void playCachedSentence(tiles, voice).then((played) => {
+      if (!played) speakText(utterance.text, "en-US", interactionNow());
+    });
   }
 
   function changeVoice(nextVoice: VoiceId) {
@@ -243,6 +285,14 @@ export default function Home() {
   function previewVoice(previewVoice: VoiceId) {
     const previewTile = coreTiles.find((tile) => tile.id === "i");
     if (previewTile) playTileClip(previewTile, previewVoice, interactionNow());
+  }
+
+  function endSession() {
+    void clearSessionUtterances()
+      .then(() => setRecentUtterances([]))
+      .catch(() => {
+        // Ending the local replay list must never block access to the board.
+      });
   }
 
   function openCaregiverMode() {
@@ -260,6 +310,7 @@ export default function Home() {
         selectedVoice={voice}
         onChangeVoice={changeVoice}
         onPreviewVoice={previewVoice}
+        onEndSession={endSession}
       />
     );
   }
@@ -277,6 +328,12 @@ export default function Home() {
         </button>
         <h1>Say it your way</h1>
       </header>
+
+      <CommunicationTools
+        recentUtterances={recentUtterances}
+        onSpeakPhrase={speakQuickPhrase}
+        onReplay={replayUtterance}
+      />
 
       <section className="sentence-area" aria-label="Your sentence">
         <button

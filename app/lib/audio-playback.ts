@@ -2,17 +2,44 @@ import { interactionNow, recordInteractionMetric } from "@/app/lib/interaction-m
 import { speakText } from "@/app/lib/speech";
 import type { Tile } from "@/app/data/tiles";
 import type { VoiceId } from "@/app/lib/audio-voices";
+import { phraseById } from "@/app/lib/quick-phrases";
 
 const CLIP_GAP_MS = 120;
+let alertAudioContext: AudioContext | null = null;
 
 function clipUrl(tileId: string, voice: VoiceId) {
   return `/audio/en/${voice}/${tileId}.mp3`;
 }
 
-function playAudio(url: string, onStart?: () => void) {
+function phraseUrl(phraseId: string, voice: VoiceId) {
+  return `/audio/en/${voice}/system/${phraseId}.mp3`;
+}
+
+function applyAlertBoost(audio: HTMLAudioElement) {
+  if (typeof AudioContext === "undefined") return;
+
+  try {
+    alertAudioContext ??= new AudioContext();
+    const source = alertAudioContext.createMediaElementSource(audio);
+    const gain = alertAudioContext.createGain();
+    // This is intentionally modest: attention should be easier to hear, never harsh.
+    gain.gain.value = 1.3;
+    source.connect(gain).connect(alertAudioContext.destination);
+    audio.addEventListener("ended", () => {
+      source.disconnect();
+      gain.disconnect();
+    }, { once: true });
+    void alertAudioContext.resume();
+  } catch {
+    // Some browsers disallow a media-element graph. Native maximum volume remains safe.
+  }
+}
+
+function playAudio(url: string, onStart?: () => void, boosted = false) {
   if (typeof Audio === "undefined") return null;
   const audio = new Audio(url);
   audio.preload = "auto";
+  if (boosted) applyAlertBoost(audio);
   if (onStart) audio.addEventListener("play", onStart, { once: true });
   return audio;
 }
@@ -28,6 +55,19 @@ export function playTileClip(tile: Tile, voice: VoiceId, tappedAt = interactionN
       speakText(tile.speech_en, "en-US", tappedAt);
     },
   );
+  return true;
+}
+
+export function playPreGeneratedPhrase(phraseId: string, voice: VoiceId, raisedVolume = false) {
+  const phrase = phraseById(phraseId);
+  if (!phrase) return false;
+  const audio = playAudio(phraseUrl(phraseId, voice), undefined, raisedVolume);
+  if (!audio) return speakText(phrase.speech, "en-US");
+  audio.volume = raisedVolume ? 1 : 0.9;
+  audio.play().catch(() => {
+    // Keep a local browser-voice escape hatch if the cached file is unavailable.
+    speakText(phrase.speech, "en-US");
+  });
   return true;
 }
 

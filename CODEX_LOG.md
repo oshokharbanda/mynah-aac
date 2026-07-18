@@ -55,3 +55,11 @@
 - Added `/api/speak`, using Eleven Flash v2.5 with calm, low-style voice settings for full-sentence prosody. The client aborts it after 900ms; offline, slow, and error states concatenate cached clips with 120ms gaps instead of presenting an error or going silent.
 - Added a three-option caregiver board-voice picker with a local preview and IndexedDB persistence. The available account catalog had no child voice; the names are presented plainly so a caregiver—not an inferred label—chooses by listening.
 - Verified generated clips with the OS audio inspector, production lint/build, service-worker syntax, and a local `/api/speak` POST returning `200 audio/mpeg` for `I want water`.
+
+## 2026-07-19 — English-only communication shortcuts
+
+- Added a persistent, pill-shaped attention control and a distinct correction control so neither can be confused with square vocabulary tiles. Each plays a committed offline English utterance.
+- Added six deliberate whole-utterance urgent controls: bathroom, I’m hurt, I don’t feel well, help me please, I’m scared, and I’m finished. They are not prediction candidates and do not alter the child-selected vocabulary invariant.
+- Added an on-device, current-session-only “Say it again” history limited to five spoken utterances. Caregiver tools provide an explicit end-session action that clears it.
+- Generated 24 additional English-only ElevenLabs MP3s (eight whole utterances × three caregiver-selected voices), bringing the committed offline audio set to 204 files. They are included in service-worker cache version `mynah-core-v6`.
+- Verified `npm run lint`, the production Next.js build, service-worker syntax, the English-only source scan, and the generated clips’ 22.05kHz mono MP3 format.
