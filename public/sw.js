@@ -1,4 +1,4 @@
-const CACHE_NAME = "mynah-core-v3";
+const CACHE_NAME = "mynah-core-v4";
 const CORE_ASSETS = [
   "/",
   "/manifest.webmanifest",

@@ -185,15 +185,6 @@ button:focus-visible {
   letter-spacing: -0.02em;
 }
 
-.tile-count {
-  border-radius: 999px;
-  background: #e5f2ed;
-  padding: 6px 10px;
-  color: #31554b;
-  font-size: 0.86rem;
-  font-weight: 800;
-}
-
 .core-grid,
 .fringe-grid {
   display: grid;
@@ -229,12 +220,6 @@ button:focus-visible {
 
 .tile-label {
   font-size: clamp(0.95rem, 3.8vw, 1.1rem);
-}
-
-.tile-local-label {
-  color: #41505a;
-  font-size: 0.76rem;
-  font-weight: 700;
 }
 
 .category-tabs {

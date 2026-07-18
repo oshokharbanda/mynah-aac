@@ -1,6 +1,6 @@
 import { interactionNow, recordInteractionMetric } from "@/app/lib/interaction-metrics";
 
-export type SpeechLanguage = "en-US" | "hi-IN";
+export type SpeechLanguage = "en-US";
 
 let cachedVoices: SpeechSynthesisVoice[] = [];
 let voiceListenerAttached = false;

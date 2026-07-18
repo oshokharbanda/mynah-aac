@@ -41,9 +41,8 @@ export function TileButton({ tile, onAdd }: { tile: Tile; onAdd: AddTile }) {
         } as CSSProperties
       }
     >
-      <img src={tile.symbol.localPath} alt="" aria-hidden="true" />
+      <img src={tile.symbol.localPath} alt={tile.label_en} />
       <span className="tile-label">{tile.label_en}</span>
-      <span className="tile-local-label">{tile.label_local}</span>
     </button>
   );
 }

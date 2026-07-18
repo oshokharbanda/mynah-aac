@@ -138,7 +138,6 @@ export default function Home() {
             <p className="section-kicker">Always here</p>
             <h2 id="core-heading">Core words</h2>
           </div>
-          <span className="tile-count">24</span>
         </div>
         <CoreGrid onAdd={addTile} />
       </section>
@@ -149,7 +148,6 @@ export default function Home() {
             <p className="section-kicker">Choose a group</p>
             <h2 id="fringe-heading">More words</h2>
           </div>
-          <span className="tile-count">36</span>
         </div>
         <CategoryTabs
           categories={categories}

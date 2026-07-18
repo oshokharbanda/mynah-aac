@@ -22,7 +22,7 @@ No home-screen installation is required for offline use. After the first online 
 
 - 24 fixed core tiles are always visible and occupy permanent `pinned_index` slots.
 - 36 fringe tiles are organised into six one-tap categories.
-- Every tile carries English and Hindi labels/speech fields. The board speaks English (`en-US`) by default; Hindi will be available through the language toggle.
+- Every tile carries one English label and English speech text (`en-US`).
 - The `SuggestionRow` is separate from `CoreGrid`; it currently renders no suggestions and will be the only place predictive tiles appear.
 
 ## On-device data
