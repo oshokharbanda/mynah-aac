@@ -37,6 +37,12 @@ For the public Vercel deployment, set `OPENAI_API_KEY` server-side. `store: fals
 
 Each tile tap updates its `count` and `last_used_at` in IndexedDB through `idb`. This stays on the device and never blocks the child’s tap. The board also stores every fallback, cached, and model prediction with strip state, suggested tile IDs/ranks/reasons, and the tile selected from a suggestion, enabling an on-device suggestion hit-rate and taps-saved analysis later. This stays on the device; only the transient candidate request reaches the prediction API.
 
+## Voice and offline audio
+
+Each of the 60 English tiles has a committed MP3 clip for each of three caregiver-selectable ElevenLabs voices. They live in `public/audio/en/<voice>/<tile_id>.mp3`, are pre-cached by the service worker, and play first on every tile tap. The selected voice is persisted in IndexedDB.
+
+Sentence-strip playback requests a natural full-sentence MP3 from `/api/speak`. It falls back after 900ms, offline, or any error by playing the bundled tile clips in order with 120ms gaps; Web Speech is used only if cached audio itself is unavailable. Set `ELEVENLABS_API_KEY` in the production environment for `/api/speak`.
+
 ## Symbol attribution
 
 The 60 PNG symbols in `public/symbols` are from [ARASAAC](https://arasaac.org), created by Sergio Palao, and are licensed under [Creative Commons BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). They are included locally for offline use and are not hotlinked. The full notice is in [LICENSE](LICENSE).

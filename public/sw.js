@@ -1,4 +1,6 @@
-const CACHE_NAME = "mynah-core-v4";
+importScripts("/audio-manifest.js");
+
+const CACHE_NAME = "mynah-core-v5";
 const CORE_ASSETS = [
   "/",
   "/manifest.webmanifest",
@@ -21,6 +23,7 @@ const CORE_ASSETS = [
   "/symbols/ball.png", "/symbols/book.png", "/symbols/music.png", "/symbols/toy.png",
   "/symbols/bubbles.png", "/symbols/draw.png", "/symbols/toilet.png", "/symbols/hurt.png",
   "/symbols/thirsty.png", "/symbols/hungry.png", "/symbols/cold.png", "/symbols/hot.png",
+  ...(Array.isArray(self.MYNAH_AUDIO_ASSETS) ? self.MYNAH_AUDIO_ASSETS : []),
 ];
 
 self.addEventListener("install", (event) => {

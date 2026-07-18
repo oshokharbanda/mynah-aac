@@ -47,3 +47,11 @@
 - Retained the monotonic request sequence, full-strip hash, immediate abort on every strip change, and stale-response rejection. They are request metadata while the JSON body remains exactly the public contract.
 - Added bounded client and server caches keyed by last two IDs + scene + personal-vocabulary IDs. The vocabulary component makes cached paths invalidate automatically when a caregiver adds a personal tile.
 - Verified lint and production build pass. Loopback POST with the exact new payload returned `200`, `x-mynah-source: fallback`, and `{"suggestions":[]}` with no API key. A core ID supplied as a candidate received the same silent fallback and was not eligible for prediction. In the local production UI, `I → want` retained a non-empty noun fallback row (`apple`, `baby`, `ball`, `banana`) while the fixed core grid stayed at 24 tiles.
+
+## 2026-07-19 — Offline voice banks
+
+- Replaced primary Web Speech tile playback with committed ElevenLabs MP3 clips. Generated three complete English banks: 180 non-empty MP3s (60 tiles × Sarah, Liam, and Will), at 22.05kHz mono and 720KB total.
+- The service worker imports the generated audio manifest and pre-caches every selected-voice clip. A tile tap starts its local clip first; Web Speech remains only as the final fallback when local audio cannot play.
+- Added `/api/speak`, using Eleven Flash v2.5 with calm, low-style voice settings for full-sentence prosody. The client aborts it after 900ms; offline, slow, and error states concatenate cached clips with 120ms gaps instead of presenting an error or going silent.
+- Added a three-option caregiver board-voice picker with a local preview and IndexedDB persistence. The available account catalog had no child voice; the names are presented plainly so a caregiver—not an inferred label—chooses by listening.
+- Verified generated clips with the OS audio inspector, production lint/build, service-worker syntax, and a local `/api/speak` POST returning `200 audio/mpeg` for `I want water`.

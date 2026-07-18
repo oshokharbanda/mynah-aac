@@ -306,6 +306,46 @@ button:focus-visible {
   font-weight: 800;
 }
 
+.credits-card + .credits-card {
+  margin-top: 18px;
+}
+
+.voice-options {
+  display: grid;
+  gap: 10px;
+}
+
+.voice-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.voice-select,
+.voice-preview {
+  min-height: 56px;
+  border: 2px solid #bfceca;
+  border-radius: 14px;
+  background: #fff;
+  color: #29423b;
+  font-weight: 800;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.voice-select[aria-pressed="true"] {
+  border-color: #28765e;
+  background: #dff2e9;
+  color: #123f31;
+}
+
+.voice-preview {
+  min-width: 92px;
+  border-color: #9db6d7;
+  background: #f4f8ff;
+  color: #24456f;
+}
+
 .caregiver-back {
   min-height: 64px;
   width: 100%;

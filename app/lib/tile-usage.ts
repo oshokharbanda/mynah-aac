@@ -1,4 +1,5 @@
 import { openDB, type DBSchema } from "idb";
+import { DEFAULT_VOICE, isVoiceId, type VoiceId } from "@/app/lib/audio-voices";
 
 export type StoredTileUsage = {
   id: string;
@@ -25,6 +26,10 @@ interface MynahDatabase extends DBSchema {
     key: string;
     value: StoredPrediction;
   };
+  settings: {
+    key: string;
+    value: { id: string; value: string };
+  };
 }
 
 let database: ReturnType<typeof openDB<MynahDatabase>> | null = null;
@@ -35,13 +40,16 @@ function getDatabase() {
     throw new Error("IndexedDB is only available in the browser.");
   }
 
-  database ??= openDB<MynahDatabase>("mynah", 2, {
+  database ??= openDB<MynahDatabase>("mynah", 3, {
     upgrade(db) {
       if (!db.objectStoreNames.contains("tileUsage")) {
         db.createObjectStore("tileUsage", { keyPath: "id" });
       }
       if (!db.objectStoreNames.contains("predictions")) {
         db.createObjectStore("predictions", { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains("settings")) {
+        db.createObjectStore("settings", { keyPath: "id" });
       }
     },
   });
@@ -102,4 +110,15 @@ export async function markSuggestedTileTapped(predictionId: string, tileId: stri
   if (!prediction || prediction.tapped_suggestion_id) return;
 
   await db.put("predictions", { ...prediction, tapped_suggestion_id: tileId });
+}
+
+export async function getVoicePreference() {
+  const db = await getDatabase();
+  const setting = await db.get("settings", "voice");
+  return isVoiceId(setting?.value) ? setting.value : DEFAULT_VOICE;
+}
+
+export async function setVoicePreference(voice: VoiceId) {
+  const db = await getDatabase();
+  await db.put("settings", { id: "voice", value: voice });
 }

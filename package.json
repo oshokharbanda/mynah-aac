@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "generate:tile-audio": "node scripts/generate-tile-audio.mjs"
   },
   "dependencies": {
     "idb": "^8.0.3",

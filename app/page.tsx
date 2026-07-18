@@ -3,8 +3,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CategoryTabs, CoreGrid, FringeGrid, SuggestionRow } from "@/app/components/board";
 import { CaregiverCredits } from "@/app/components/caregiver-credits";
-import { categories, fringeTiles, type CategoryId, type Tile } from "@/app/data/tiles";
+import { categories, coreTiles, fringeTiles, type CategoryId, type Tile } from "@/app/data/tiles";
 import { interactionNow, recordInteractionMetric } from "@/app/lib/interaction-metrics";
+import { DEFAULT_VOICE, type VoiceId } from "@/app/lib/audio-voices";
+import { playSentenceWithFallback, playTileClip } from "@/app/lib/audio-playback";
 import {
   buildCandidates,
   predictionCacheKey,
@@ -14,17 +16,18 @@ import {
   type BoardPredictionResponse,
   type PredictionItem,
 } from "@/app/lib/predictions";
-import { prepareSpeechVoices, speakText } from "@/app/lib/speech";
+import { prepareSpeechVoices } from "@/app/lib/speech";
 import {
   getTileUsage,
   markSuggestedTileTapped,
+  getVoicePreference,
   createPredictionId,
   recordPrediction,
   recordTileUse,
+  setVoicePreference,
   type StoredTileUsage,
 } from "@/app/lib/tile-usage";
 
-const DEFAULT_SPEECH_LANGUAGE = "en-US" as const;
 const DEFAULT_SCENE = "home" as const;
 
 type CachedPrediction = {
@@ -38,6 +41,7 @@ export default function Home() {
   const [caregiverMode, setCaregiverMode] = useState(false);
   const [suggestionItems, setSuggestionItems] = useState<PredictionItem[]>([]);
   const [usageByTile, setUsageByTile] = useState<Record<string, StoredTileUsage>>({});
+  const [voice, setVoice] = useState<VoiceId>(DEFAULT_VOICE);
   const caregiverTapCount = useRef(0);
   const stripTapStartedAt = useRef<number | null>(null);
   const requestAbort = useRef<AbortController | null>(null);
@@ -63,6 +67,12 @@ export default function Home() {
 
   useEffect(() => {
     void prepareSpeechVoices();
+  }, []);
+
+  useEffect(() => {
+    void getVoicePreference().then(setVoice).catch(() => {
+      // The bundled default remains available if private storage is unavailable.
+    });
   }, []);
 
   useEffect(() => {
@@ -181,6 +191,7 @@ export default function Home() {
     invalidatePrediction(nextTiles);
     stripTapStartedAt.current = interactionNow();
     setSelectedTiles(nextTiles);
+    playTileClip(tile, voice, interactionNow());
     setUsageByTile((current) => ({
       ...current,
       [tile.id]: {
@@ -219,7 +230,19 @@ export default function Home() {
   }
 
   function speakSentence() {
-    speakText(spokenText, DEFAULT_SPEECH_LANGUAGE, interactionNow());
+    void playSentenceWithFallback(spokenText, selectedTiles, voice, interactionNow());
+  }
+
+  function changeVoice(nextVoice: VoiceId) {
+    setVoice(nextVoice);
+    void setVoicePreference(nextVoice).catch(() => {
+      // Changing a voice must not create a child-facing error.
+    });
+  }
+
+  function previewVoice(previewVoice: VoiceId) {
+    const previewTile = coreTiles.find((tile) => tile.id === "i");
+    if (previewTile) playTileClip(previewTile, previewVoice, interactionNow());
   }
 
   function openCaregiverMode() {
@@ -231,7 +254,14 @@ export default function Home() {
   }
 
   if (caregiverMode) {
-    return <CaregiverCredits onClose={() => setCaregiverMode(false)} />;
+    return (
+      <CaregiverCredits
+        onClose={() => setCaregiverMode(false)}
+        selectedVoice={voice}
+        onChangeVoice={changeVoice}
+        onPreviewVoice={previewVoice}
+      />
+    );
   }
 
   return (
