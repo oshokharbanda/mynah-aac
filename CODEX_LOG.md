@@ -92,3 +92,32 @@
 - Required device/UI tests are not marked passed: no child photo was supplied for a genuine “Nani with photo” test, and the controlled browser connection could not create a usable session for IndexedDB/airplane-mode testing. The production OpenAI checks also failed safely: real `water` at meal and `bed` at 20:30 requests both returned `200`, `x-mynah-source: fallback`, and `{"utterances":[]}`.
 - Cause of the Say More failure was verified with Vercel’s environment-name listing: production has `ELEVENLABS_API_KEY` but **does not have `OPENAI_API_KEY`**. No model JSON or p50 `/api/expand` is fabricated while that key is absent.
 - Verified `npm run lint`, the full production Next.js build, and deployed the feature to https://mynah-aac.vercel.app.
+
+## 2026-07-19 — Public repository secrets audit
+
+Audit was completed before creating or pushing a public GitHub repository. Commands were run against every reachable commit (`git log -p --all`) and results were recorded without printing any possible credential values:
+
+```text
+$ git log -p --all | grep -iE "sk_[a-zA-Z0-9]|xi-api-key"  # inspected as a count-only audit
+Initial textual references: 32
+
+$ git log -p --all --no-textconv | perl -ne '$n += () = /\bsk[-_][A-Za-z0-9_-]{16,}\b/g; END { print "$n\n" }'
+OpenAI-style secret-value matches: 0
+
+$ git log -p --all --no-textconv | grep -iEo 'xi-api-key[^[:alnum:]]{0,10}[A-Za-z0-9_-]{16,}' | wc -l
+ElevenLabs header-value matches: 0
+
+$ git log -p --all --no-textconv | grep -iEo '(OPENAI_API_KEY|ELEVENLABS_API_KEY)[[:space:]]*[=:][[:space:]]*[A-Za-z0-9_-]{16,}' | wc -l
+Assignment-style API credential value matches: 0
+
+$ git log --all --format= --name-only -- '.env' '.env.*'
+Tracked .env files: none
+
+$ git rev-list --objects --all | awk '{print $2}' | rg '(^|/)\.env(\..*)?$' | wc -l
+Historical .env file objects: 0
+
+$ git ls-files | rg '^(node_modules|\.next|\.vercel)/' | wc -l
+Tracked dependency/build paths: 0
+```
+
+The 32 initial textual references were source-code environment variable names (`OPENAI_API_KEY`, `ELEVENLABS_API_KEY`) and the literal HTTP header name `xi-api-key`, not credential values. `.gitignore` covers `.env*` (including `.env.local`) and local agent scratch files. `public/audio` has 207 committed MP3s and `public/symbols` has 60 committed PNGs.

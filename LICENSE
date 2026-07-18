@@ -20,9 +20,14 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-## ARASAAC pictograms
+## Third-party assets not covered by this MIT license
 
 The pictograms in `public/symbols` are not licensed under the MIT License.
 They are created by Sergio Palao for ARASAAC and are licensed under Creative
 Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA
 4.0). Attribution and licence information are available at https://arasaac.org.
+
+The generated speech audio in `public/audio` is not licensed under the MIT
+License. It was generated with ElevenLabs under a commercial plan and remains
+subject to the applicable ElevenLabs terms. See the in-app Caregiver mode
+credits screen and `README.md` for attribution and use context.
