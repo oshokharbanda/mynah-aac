@@ -55,6 +55,21 @@ button:focus-visible {
   text-transform: uppercase;
 }
 
+.caregiver-entry {
+  min-height: 48px;
+  margin: -8px 0 -4px -8px;
+  border: 0;
+  background: transparent;
+  padding: 8px;
+  color: #49655f;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .app-header h1 {
   margin: 4px 0 0;
   font-size: clamp(1.85rem, 5vw, 2.5rem);
@@ -266,6 +281,58 @@ button:focus-visible {
   color: #62716d;
   font-size: 0.78rem;
   text-align: center;
+}
+
+.caregiver-screen {
+  width: min(100%, 720px);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: max(28px, env(safe-area-inset-top)) clamp(20px, 6vw, 48px)
+    max(32px, env(safe-area-inset-bottom));
+}
+
+.caregiver-header h1 {
+  margin: 4px 0 28px;
+  font-size: clamp(2rem, 6vw, 2.8rem);
+  letter-spacing: -0.04em;
+}
+
+.credits-card {
+  border: 2px solid #c6d9d2;
+  border-radius: 22px;
+  background: var(--surface);
+  padding: 24px;
+}
+
+.credits-card h2 {
+  margin: 0 0 12px;
+  font-size: 1.35rem;
+}
+
+.credits-card p {
+  margin: 0 0 14px;
+  color: #43514f;
+  font-size: 1.05rem;
+  line-height: 1.5;
+}
+
+.credits-card a {
+  color: #174f3e;
+  font-weight: 800;
+}
+
+.caregiver-back {
+  min-height: 64px;
+  width: 100%;
+  margin-top: 24px;
+  border: 3px solid #4e846f;
+  border-radius: 18px;
+  background: #dff2e9;
+  color: #173f32;
+  font-size: 1.08rem;
+  font-weight: 800;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 @media (min-width: 600px) {

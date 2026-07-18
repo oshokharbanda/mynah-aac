@@ -1,29 +1,48 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CategoryTabs, CoreGrid, FringeGrid, SuggestionRow } from "@/app/components/board";
+import { CaregiverCredits } from "@/app/components/caregiver-credits";
 import { categories, type CategoryId, type Tile } from "@/app/data/tiles";
+import { interactionNow, recordInteractionMetric } from "@/app/lib/interaction-metrics";
+import { prepareSpeechVoices, speakText } from "@/app/lib/speech";
+import { recordTileUse } from "@/app/lib/tile-usage";
 
-const DEFAULT_SPEECH_LANGUAGE = "local" as const;
+const DEFAULT_SPEECH_LANGUAGE = "en-US" as const;
 
 export default function Home() {
   const [selectedTiles, setSelectedTiles] = useState<Tile[]>([]);
   const [activeCategory, setActiveCategory] = useState<CategoryId>("food");
+  const [caregiverMode, setCaregiverMode] = useState(false);
+  const caregiverTapCount = useRef(0);
+  const stripTapStartedAt = useRef<number | null>(null);
+
+  useEffect(() => {
+    void prepareSpeechVoices();
+  }, []);
+
+  useLayoutEffect(() => {
+    const startedAt = stripTapStartedAt.current;
+    if (startedAt === null) return;
+
+    stripTapStartedAt.current = null;
+    recordInteractionMetric("tap_to_strip", startedAt);
+  }, [selectedTiles]);
 
   const spokenText = useMemo(
     () =>
       selectedTiles
-        .map((tile) =>
-          DEFAULT_SPEECH_LANGUAGE === "local"
-            ? tile.speech_local
-            : tile.speech_en,
-        )
+        .map((tile) => tile.speech_en)
         .join(" "),
     [selectedTiles],
   );
 
   function addTile(tile: Tile) {
+    stripTapStartedAt.current = interactionNow();
     setSelectedTiles((current) => [...current, tile]);
+    void recordTileUse(tile.id).catch(() => {
+      // Usage history is helpful later, but must never block a child's tap.
+    });
   }
 
   function removeLastTile() {
@@ -36,20 +55,32 @@ export default function Home() {
   }
 
   function speakSentence() {
-    const speech = window.speechSynthesis;
-    if (!spokenText || !speech || typeof SpeechSynthesisUtterance === "undefined") return;
+    speakText(spokenText, DEFAULT_SPEECH_LANGUAGE, interactionNow());
+  }
 
-    speech.cancel();
-    const utterance = new SpeechSynthesisUtterance(spokenText);
-    utterance.lang = DEFAULT_SPEECH_LANGUAGE === "local" ? "hi-IN" : "en-IN";
-    utterance.rate = 0.85;
-    speech.speak(utterance);
+  function openCaregiverMode() {
+    caregiverTapCount.current += 1;
+    if (caregiverTapCount.current === 3) {
+      caregiverTapCount.current = 0;
+      setCaregiverMode(true);
+    }
+  }
+
+  if (caregiverMode) {
+    return <CaregiverCredits onClose={() => setCaregiverMode(false)} />;
   }
 
   return (
     <main className="app-shell">
       <header className="app-header">
-        <p className="eyebrow">MYNAH</p>
+        <button
+          className="caregiver-entry"
+          type="button"
+          onClick={openCaregiverMode}
+          aria-label="Caregiver tools"
+        >
+          MYNAH
+        </button>
         <h1>Say it your way</h1>
       </header>
 

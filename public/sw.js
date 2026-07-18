@@ -1,4 +1,4 @@
-const CACHE_NAME = "mynah-core-v2";
+const CACHE_NAME = "mynah-core-v3";
 const CORE_ASSETS = [
   "/",
   "/manifest.webmanifest",
@@ -35,6 +35,24 @@ self.addEventListener("activate", (event) => {
     ),
   );
   self.clients.claim();
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type !== "WARM_CURRENT_ASSETS" || !Array.isArray(event.data.urls)) return;
+
+  const urls = event.data.urls.filter((value) => {
+    try {
+      return new URL(value, self.location.origin).origin === self.location.origin;
+    } catch {
+      return false;
+    }
+  });
+
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.allSettled(urls.map((url) => cache.add(url))),
+    ),
+  );
 });
 
 self.addEventListener("fetch", (event) => {
