@@ -1,4 +1,4 @@
-export const categoryIds = ["food", "people", "places", "feelings", "play", "needs"] as const;
+export const categoryIds = ["food", "people", "places", "feelings", "play", "needs", "my_words"] as const;
 
 export type CategoryId = (typeof categoryIds)[number];
 
@@ -27,6 +27,7 @@ export type Tile = {
   symbol: {
     provider: "arasaac" | "mulberry" | "text";
     localPath?: string;
+    emoji?: string;
     attribution: string;
     license: "CC-BY-NC-SA" | "CC-BY-SA";
   };
@@ -42,6 +43,7 @@ export const categories: readonly Category[] = [
   { id: "feelings", label: "Feelings" },
   { id: "play", label: "Play" },
   { id: "needs", label: "Needs" },
+  { id: "my_words", label: "My words" },
 ];
 
 const arasaac = (file: string) => ({

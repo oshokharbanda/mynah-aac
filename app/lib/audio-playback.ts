@@ -44,6 +44,18 @@ function playAudio(url: string, onStart?: () => void, boosted = false) {
   return audio;
 }
 
+function playBlobAudio(blob: Blob, onStart?: () => void) {
+  const url = URL.createObjectURL(blob);
+  const audio = playAudio(url, onStart);
+  if (audio) {
+    audio.addEventListener("ended", () => URL.revokeObjectURL(url), { once: true });
+    audio.addEventListener("error", () => URL.revokeObjectURL(url), { once: true });
+  } else {
+    URL.revokeObjectURL(url);
+  }
+  return audio;
+}
+
 export function playTileClip(tile: Tile, voice: VoiceId, tappedAt = interactionNow()) {
   const audio = playAudio(clipUrl(tile.id, voice), () => recordInteractionMetric("tap_to_speech_start", tappedAt));
   if (!audio) return speakText(tile.speech_en, "en-US", tappedAt);
@@ -54,6 +66,17 @@ export function playTileClip(tile: Tile, voice: VoiceId, tappedAt = interactionN
       // Missing or unsupported local media gets the browser voice only as a last resort.
       speakText(tile.speech_en, "en-US", tappedAt);
     },
+  );
+  return true;
+}
+
+export function playPersonalTileClip(tile: Tile, audioBlob: Blob | undefined, tappedAt = interactionNow()) {
+  if (!audioBlob) return speakText(tile.speech_en, "en-US", tappedAt);
+  const audio = playBlobAudio(audioBlob, () => recordInteractionMetric("tap_to_speech_start", tappedAt));
+  if (!audio) return speakText(tile.speech_en, "en-US", tappedAt);
+  audio.play().then(
+    () => recordInteractionMetric("tap_to_speech_dispatch", tappedAt),
+    () => speakText(tile.speech_en, "en-US", tappedAt),
   );
   return true;
 }
@@ -90,11 +113,28 @@ export async function playCachedSentence(tiles: readonly Tile[], voice: VoiceId)
   return playedAny;
 }
 
+export async function playSentenceClips(
+  tiles: readonly Tile[],
+  voice: VoiceId,
+  personalAudio: ReadonlyMap<string, Blob>,
+) {
+  let playedAny = false;
+  for (const tile of tiles) {
+    const audio = tile.origin === "personal"
+      ? (personalAudio.get(tile.id) ? playBlobAudio(personalAudio.get(tile.id)!) : null)
+      : playAudio(clipUrl(tile.id, voice));
+    if (audio) playedAny = (await waitForClip(audio)) || playedAny;
+    await new Promise((resolve) => window.setTimeout(resolve, CLIP_GAP_MS));
+  }
+  return playedAny;
+}
+
 export async function playSentenceWithFallback(
   text: string,
   tiles: readonly Tile[],
   voice: VoiceId,
   tappedAt = interactionNow(),
+  personalAudio = new Map<string, Blob>(),
 ) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 900);
@@ -117,7 +157,7 @@ export async function playSentenceWithFallback(
     audio.addEventListener("ended", () => URL.revokeObjectURL(url), { once: true });
     return true;
   } catch {
-    const playedClips = await playCachedSentence(tiles, voice);
+    const playedClips = await playSentenceClips(tiles, voice, personalAudio);
     if (!playedClips) speakText(text, "en-US", tappedAt);
     return playedClips;
   } finally {

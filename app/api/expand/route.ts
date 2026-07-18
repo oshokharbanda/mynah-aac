@@ -45,6 +45,7 @@ type ExpandRequest = {
   local_time: string;
   recent_utterances: RecentUtterance[];
   personal_tile_ids: string[];
+  personal_tiles: Array<{ id: string; label_en: string; part_of_speech: "noun" | "verb" | "adjective" | "social" | "pronoun" | "question" | "negation" | "preposition" | "determiner" }>;
 };
 
 function isString(value: unknown, maxLength = 160): value is string {
@@ -55,14 +56,14 @@ function isScene(value: unknown): value is Scene {
   return value === "home" || value === "meal" || value === "school" || value === "park" || value === "bedtime";
 }
 
-function parseRecentUtterance(value: unknown): RecentUtterance | null {
+function parseRecentUtterance(value: unknown, vocabulary: Map<string, { id: string }>): RecentUtterance | null {
   if (!value || typeof value !== "object") return null;
   const utterance = value as Partial<RecentUtterance>;
   if (
     !isString(utterance.text, 300) ||
     !Array.isArray(utterance.tile_ids) ||
     utterance.tile_ids.length > 5 ||
-    !utterance.tile_ids.every((id) => isString(id, 80) && vocabularyById.has(id))
+    !utterance.tile_ids.every((id) => isString(id, 80) && vocabulary.has(id))
   ) return null;
   return { text: utterance.text, tile_ids: utterance.tile_ids };
 }
@@ -72,17 +73,35 @@ function parseRequest(value: unknown): ExpandRequest | null {
   const body = value as Partial<ExpandRequest>;
   if (
     !isString(body.seed_tile_id, 80) ||
-    !vocabularyById.has(body.seed_tile_id) ||
     !isScene(body.scene) ||
     !/^([01]\d|2[0-3]):[0-5]\d$/.test(body.local_time ?? "") ||
     !Array.isArray(body.recent_utterances) ||
     body.recent_utterances.length > 5 ||
     !Array.isArray(body.personal_tile_ids) ||
     body.personal_tile_ids.length > 60 ||
-    !body.personal_tile_ids.every((id) => isString(id, 80) && vocabularyById.has(id))
+    !body.personal_tile_ids.every((id) => isString(id, 80)) ||
+    !Array.isArray(body.personal_tiles) ||
+    body.personal_tiles.length > 60
   ) return null;
 
-  const recent = body.recent_utterances.map(parseRecentUtterance);
+  const personalTiles = body.personal_tiles.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const tile = item as { id?: unknown; label_en?: unknown; part_of_speech?: unknown };
+    if (!isString(tile.id, 80) || !isString(tile.label_en, 200) ||
+      !["noun", "verb", "adjective", "social", "pronoun", "question", "negation", "preposition", "determiner"].includes(String(tile.part_of_speech)) ||
+      vocabularyById.has(tile.id)) return [];
+    return [{ id: tile.id, label_en: tile.label_en, part_of_speech: tile.part_of_speech as ExpandRequest["personal_tiles"][number]["part_of_speech"] }];
+  });
+  if (personalTiles.length !== body.personal_tiles.length) return null;
+  const vocabulary = new Map<string, { id: string }>([
+    ...vocabularyById,
+    ...personalTiles.map((tile) => [tile.id, tile] as const),
+  ]);
+  if (!vocabulary.has(body.seed_tile_id) ||
+    !body.personal_tile_ids.every((id) => personalTiles.some((tile) => tile.id === id)) ||
+    new Set(personalTiles.map((tile) => tile.id)).size !== personalTiles.length) return null;
+
+  const recent = body.recent_utterances.map((utterance) => parseRecentUtterance(utterance, vocabulary));
   if (recent.some((utterance) => !utterance)) return null;
   if (new Set(body.personal_tile_ids).size !== body.personal_tile_ids.length) return null;
 
@@ -92,6 +111,7 @@ function parseRequest(value: unknown): ExpandRequest | null {
     local_time: body.local_time as string,
     recent_utterances: recent as RecentUtterance[],
     personal_tile_ids: body.personal_tile_ids as string[],
+    personal_tiles: personalTiles,
   };
 }
 
@@ -111,6 +131,10 @@ function validateUtterances(value: unknown, body: ExpandRequest): ExpansionUtter
   const seenUtterances = new Set<string>();
   const seenIntents = new Set<ExpansionIntent>();
   const seedIsDistress = distressTileIds.has(body.seed_tile_id);
+  const vocabulary = new Map<string, { id: string }>([
+    ...vocabularyById,
+    ...body.personal_tiles.map((tile) => [tile.id, tile] as const),
+  ]);
 
   return parsed.utterances.flatMap((entry) => {
     if (!entry || typeof entry !== "object") return [];
@@ -119,7 +143,7 @@ function validateUtterances(value: unknown, body: ExpandRequest): ExpansionUtter
       !Array.isArray(tile_ids) ||
       tile_ids.length < 3 ||
       tile_ids.length > 5 ||
-      !tile_ids.every((id) => isString(id, 80) && vocabularyById.has(id)) ||
+      !tile_ids.every((id) => isString(id, 80) && vocabulary.has(id)) ||
       !tile_ids.includes(body.seed_tile_id) ||
       new Set(tile_ids).size !== tile_ids.length ||
       !isIntent(intent)
@@ -139,7 +163,8 @@ export async function POST(request: NextRequest) {
   const body = parseRequest(await request.json().catch(() => null));
   if (!body) return fallback("invalid request");
 
-  const seed = vocabularyById.get(body.seed_tile_id);
+  const vocabulary = [...allTiles, ...body.personal_tiles];
+  const seed = vocabulary.find((tile) => tile.id === body.seed_tile_id);
   if (!seed || (seed.part_of_speech !== "noun" && seed.part_of_speech !== "verb")) {
     return fallback("ineligible seed tile");
   }
@@ -159,11 +184,11 @@ export async function POST(request: NextRequest) {
       instructions: systemPrompt,
       input: JSON.stringify({
         SEED_WORD: { id: seed.id, label_en: seed.label_en, part_of_speech: seed.part_of_speech },
-        VOCABULARY: allTiles.map((tile) => ({
+        VOCABULARY: vocabulary.map((tile) => ({
           id: tile.id,
           label_en: tile.label_en,
           part_of_speech: tile.part_of_speech,
-          origin: body.personal_tile_ids.includes(tile.id) ? "personal" : tile.origin,
+          origin: body.personal_tile_ids.includes(tile.id) ? "personal" : ("origin" in tile ? tile.origin : "personal"),
         })),
         SCENE: body.scene,
         LOCAL_TIME: body.local_time,

@@ -9,7 +9,9 @@ import { SayMore } from "@/app/components/say-more";
 import { allTiles, categories, coreTiles, fringeTiles, type CategoryId, type Tile } from "@/app/data/tiles";
 import { interactionNow, recordInteractionMetric } from "@/app/lib/interaction-metrics";
 import { DEFAULT_VOICE, type VoiceId } from "@/app/lib/audio-voices";
-import { playCachedSentence, playPreGeneratedPhrase, playSentenceWithFallback, playTileClip } from "@/app/lib/audio-playback";
+import { playPersonalTileClip, playPreGeneratedPhrase, playSentenceClips, playSentenceWithFallback, playTileClip } from "@/app/lib/audio-playback";
+import { personalTileToBoardTile, type PersonalTile, type StoredPersonalTile } from "@/app/lib/personal-tiles";
+import type { PersonalTileDraft } from "@/app/components/caregiver-credits";
 import { phraseById } from "@/app/lib/quick-phrases";
 import { canExpandTile, type ExpansionResponse, type ExpansionUtterance } from "@/app/lib/expansions";
 import {
@@ -39,6 +41,11 @@ import {
   recordTileUse,
   setVoicePreference,
   setSentenceSuggestionsPreference,
+  getPersonalTiles,
+  hidePersonalTile,
+  savePersonalTile,
+  savePersonalTileAudio,
+  setPersonalTileVoicePending,
   type StoredUtterance,
   type StoredTileUsage,
 } from "@/app/lib/tile-usage";
@@ -61,6 +68,7 @@ export default function Home() {
   const [clearArmed, setClearArmed] = useState(false);
   const [sentenceSuggestionsEnabled, setSentenceSuggestionsEnabled] = useState(true);
   const [expansionItems, setExpansionItems] = useState<ExpansionUtterance[]>([]);
+  const [personalTiles, setPersonalTiles] = useState<PersonalTile[]>([]);
   const clearConfirmTimer = useRef<number | null>(null);
   const stripTapStartedAt = useRef<number | null>(null);
   const requestAbort = useRef<AbortController | null>(null);
@@ -72,12 +80,19 @@ export default function Home() {
   const expansionSequence = useRef(0);
   const expansionLogId = useRef<string | null>(null);
   const dismissedExpansionHash = useRef<string | null>(null);
+  const personalPhotoUrls = useRef<string[]>([]);
 
   const selectedIds = useMemo(() => selectedTiles.map((tile) => tile.id), [selectedTiles]);
+  const visiblePersonalTiles = useMemo(() => personalTiles.filter((tile) => !tile.hidden), [personalTiles]);
+  const vocabulary = useMemo(() => [...allTiles, ...visiblePersonalTiles], [visiblePersonalTiles]);
+  const personalAudio = useMemo(
+    () => new Map(visiblePersonalTiles.flatMap((tile) => tile.audio[voice] ? [[tile.id, tile.audio[voice]] as const] : [])),
+    [visiblePersonalTiles, voice],
+  );
   const currentHash = useMemo(() => stripHash(selectedIds), [selectedIds]);
   const candidates = useMemo(
-    () => buildCandidates(usageByTile, selectedIds),
-    [selectedIds, usageByTile],
+    () => buildCandidates(usageByTile, selectedIds, visiblePersonalTiles),
+    [selectedIds, usageByTile, visiblePersonalTiles],
   );
   const cacheKey = useMemo(
     () => predictionCacheKey(selectedIds, DEFAULT_SCENE, candidates),
@@ -86,11 +101,11 @@ export default function Home() {
   const visibleExpansions = useMemo(
     () => expansionItems.flatMap((utterance) => {
       const tiles = utterance.tile_ids
-        .map((tileId) => allTiles.find((tile) => tile.id === tileId))
+        .map((tileId) => vocabulary.find((tile) => tile.id === tileId))
         .filter((tile): tile is Tile => Boolean(tile));
       return tiles.length === utterance.tile_ids.length ? [{ ...utterance, tiles }] : [];
     }),
-    [expansionItems],
+    [expansionItems, vocabulary],
   );
 
   useLayoutEffect(() => {
@@ -124,11 +139,32 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    void getTileUsage(fringeTiles.map((tile) => tile.id))
+    void getTileUsage([...fringeTiles, ...visiblePersonalTiles].map((tile) => tile.id))
       .then(setUsageByTile)
       .catch(() => {
         // The deterministic zero-use fallback remains available without private storage.
       });
+  }, [visiblePersonalTiles]);
+
+  function refreshPersonalTiles() {
+    return getPersonalTiles().then((records) => {
+      personalPhotoUrls.current.forEach((url) => URL.revokeObjectURL(url));
+      personalPhotoUrls.current = [];
+      const next = records.map(({ tile, asset }) => {
+        const photoUrl = asset?.photo ? URL.createObjectURL(asset.photo) : undefined;
+        if (photoUrl) personalPhotoUrls.current.push(photoUrl);
+        return personalTileToBoardTile(tile, asset, photoUrl);
+      });
+      setPersonalTiles(next);
+      return next;
+    });
+  }
+
+  useEffect(() => {
+    void refreshPersonalTiles().catch(() => {
+      // Personal words are optional; the stock board stays usable without private storage.
+    });
+    return () => personalPhotoUrls.current.forEach((url) => URL.revokeObjectURL(url));
   }, []);
 
   useLayoutEffect(() => {
@@ -169,7 +205,7 @@ export default function Home() {
     };
 
     // The usage-count fallback is always first and never leaves a child-facing empty state.
-    showPrediction(rankFallback(candidates, selectedIds), "fallback");
+    showPrediction(rankFallback(candidates, selectedIds, vocabulary), "fallback");
 
     const cached = predictionCache.current.get(cacheKey);
     if (cached) {
@@ -215,7 +251,7 @@ export default function Home() {
 
     void predict();
     return () => controller.abort();
-  }, [cacheKey, candidates, currentHash, selectedIds, selectedTiles]);
+  }, [cacheKey, candidates, currentHash, selectedIds, selectedTiles, vocabulary]);
 
   useEffect(() => {
     const sequence = expansionSequence.current + 1;
@@ -248,7 +284,12 @@ export default function Home() {
           scene: DEFAULT_SCENE,
           local_time: new Date().toTimeString().slice(0, 5),
           recent_utterances: recentUtterances.slice(0, 5).map(({ text, tile_ids }) => ({ text, tile_ids })),
-          personal_tile_ids: allTiles.filter((tile) => tile.origin === "personal").map((tile) => tile.id),
+          personal_tile_ids: visiblePersonalTiles.map((tile) => tile.id),
+          personal_tiles: visiblePersonalTiles.map((tile) => ({
+            id: tile.id,
+            label_en: tile.label_en,
+            part_of_speech: tile.part_of_speech,
+          })),
         }),
         signal: controller.signal,
       })
@@ -281,7 +322,7 @@ export default function Home() {
       window.clearTimeout(pause);
       controller.abort();
     };
-  }, [currentHash, recentUtterances, selectedTiles, sentenceSuggestionsEnabled]);
+  }, [currentHash, recentUtterances, selectedTiles, sentenceSuggestionsEnabled, visiblePersonalTiles]);
 
   const spokenText = useMemo(
     () =>
@@ -302,7 +343,7 @@ export default function Home() {
     expansionLogId.current = null;
     setExpansionItems([]);
     const nextIds = nextTiles.map((tile) => tile.id);
-    setSuggestionItems(rankFallback(buildCandidates(usageByTile, nextIds), nextIds));
+    setSuggestionItems(rankFallback(buildCandidates(usageByTile, nextIds, visiblePersonalTiles), nextIds, vocabulary));
   }
 
   function addTile(tile: Tile) {
@@ -311,7 +352,11 @@ export default function Home() {
     invalidatePrediction(nextTiles);
     stripTapStartedAt.current = interactionNow();
     setSelectedTiles(nextTiles);
-    playTileClip(tile, voice, interactionNow());
+    if (tile.origin === "personal") {
+      playPersonalTileClip(tile, personalAudio.get(tile.id), interactionNow());
+    } else {
+      playTileClip(tile, voice, interactionNow());
+    }
     setUsageByTile((current) => ({
       ...current,
       [tile.id]: {
@@ -374,7 +419,7 @@ export default function Home() {
   }
 
   function speakSentence() {
-    void playSentenceWithFallback(spokenText, selectedTiles, voice, interactionNow());
+    void playSentenceWithFallback(spokenText, selectedTiles, voice, interactionNow(), personalAudio);
     rememberUtterance({ text: spokenText, tile_ids: selectedIds, phrase_id: null });
   }
 
@@ -402,7 +447,7 @@ export default function Home() {
       });
     }
     requestAnimationFrame(() => {
-      void playCachedSentence(nextTiles, voice).then((played) => {
+      void playSentenceClips(nextTiles, voice, personalAudio).then((played) => {
         if (!played) speakText(nextTiles.map((tile) => tile.speech_en).join(" "), "en-US", interactionNow());
       });
     });
@@ -438,11 +483,67 @@ export default function Home() {
       return;
     }
     const tiles = utterance.tile_ids
-      .map((tileId) => allTiles.find((tile) => tile.id === tileId))
+      .map((tileId) => vocabulary.find((tile) => tile.id === tileId))
       .filter((tile): tile is Tile => Boolean(tile));
-    void playCachedSentence(tiles, voice).then((played) => {
+    void playSentenceClips(tiles, voice, personalAudio).then((played) => {
       if (!played) speakText(utterance.text, "en-US", interactionNow());
     });
+  }
+
+  async function generatePersonalVoice(tileId: string, text: string) {
+    try {
+      const response = await fetch("/api/generate-word", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text_en: text, voice_id: voice }),
+      });
+      if (!response.ok) throw new Error("Voice generation is unavailable.");
+      await savePersonalTileAudio(tileId, voice, await response.blob());
+    } catch {
+      await setPersonalTileVoicePending(tileId, true);
+    } finally {
+      await refreshPersonalTiles();
+    }
+  }
+
+  async function saveNewPersonalTile(draft: PersonalTileDraft) {
+    const existing = draft.id ? personalTiles.find((tile) => tile.id === draft.id) : undefined;
+    const isNewPhoto = draft.pictureKind === "photo" && draft.photo && !existing?.photoBlob;
+    const photoCount = personalTiles.filter((tile) => tile.photoBlob).length;
+    if (isNewPhoto && photoCount >= 50) throw new Error("The 50-photo limit has been reached.");
+    const now = Date.now();
+    const stored: StoredPersonalTile = {
+      id: draft.id ?? `personal-${crypto.randomUUID()}`,
+      is_core: false,
+      pinned_index: null,
+      category: "my_words",
+      secondary_category: draft.secondaryCategory,
+      part_of_speech: draft.partOfSpeech,
+      label_en: draft.word,
+      speech_en: draft.word,
+      picture_kind: draft.pictureKind,
+      emoji: draft.pictureKind === "emoji" ? draft.emoji || "⭐" : null,
+      hidden: false,
+      origin: "personal",
+      approved: true,
+      voice_pending: true,
+      created_at: existing?.created_at ?? now,
+      updated_at: now,
+    };
+    await savePersonalTile(stored, draft.pictureKind === "photo" ? draft.photo : null);
+    await refreshPersonalTiles();
+    void generatePersonalVoice(stored.id, stored.speech_en);
+  }
+
+  function hideWord(tileId: string) {
+    void hidePersonalTile(tileId).then(refreshPersonalTiles).catch(() => {
+      // A failed hide must not affect the stock board.
+    });
+  }
+
+  function retryPersonalVoice(tileId: string) {
+    const tile = personalTiles.find((item) => item.id === tileId);
+    if (tile) void generatePersonalVoice(tile.id, tile.speech_en);
   }
 
   function changeVoice(nextVoice: VoiceId) {
@@ -487,6 +588,11 @@ export default function Home() {
         onEndSession={endSession}
         sentenceSuggestionsEnabled={sentenceSuggestionsEnabled}
         onChangeSentenceSuggestions={changeSentenceSuggestions}
+        personalTiles={personalTiles.filter((tile) => !tile.hidden)}
+        photoCount={personalTiles.filter((tile) => tile.photoBlob).length}
+        onSavePersonalTile={saveNewPersonalTile}
+        onHidePersonalTile={hideWord}
+        onRetryVoice={retryPersonalVoice}
       />
     );
   }
@@ -518,7 +624,13 @@ export default function Home() {
                   className={`sentence-word${index === selectedTiles.length - 1 ? " sentence-word-pulse" : ""}`}
                   key={`${tile.id}-${index}`}
                 >
-                  <img src={tile.symbol.localPath} alt="" />
+                  {tile.symbol.localPath ? (
+                    <img src={tile.symbol.localPath} alt="" />
+                  ) : tile.symbol.emoji ? (
+                    <span className="tile-emoji" aria-hidden="true">{tile.symbol.emoji}</span>
+                  ) : (
+                    <span className="tile-text-symbol" aria-hidden="true">{tile.label_en}</span>
+                  )}
                   <span className="sentence-word-label">{tile.label_en}</span>
                 </span>
               ))}
@@ -559,7 +671,7 @@ export default function Home() {
       />
 
       <SuggestionRow
-        suggestions={tilesForPrediction(suggestionItems)}
+        suggestions={tilesForPrediction(suggestionItems, visiblePersonalTiles)}
         onSuggestionTap={addSuggestedTile}
       />
 
@@ -579,7 +691,7 @@ export default function Home() {
           activeCategory={activeCategory}
           onChange={setActiveCategory}
         />
-        <FringeGrid category={activeCategory} onAdd={addTile} />
+        <FringeGrid category={activeCategory} personalTiles={visiblePersonalTiles} onAdd={addTile} />
       </section>
 
       <footer className="app-footer">

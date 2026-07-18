@@ -41,7 +41,13 @@ export function TileButton({ tile, onAdd }: { tile: Tile; onAdd: AddTile }) {
         } as CSSProperties
       }
     >
-      <img src={tile.symbol.localPath} alt={tile.label_en} />
+      {tile.symbol.localPath ? (
+        <img src={tile.symbol.localPath} alt={tile.label_en} />
+      ) : tile.symbol.emoji ? (
+        <span className="tile-emoji" role="img" aria-label={tile.label_en}>{tile.symbol.emoji}</span>
+      ) : (
+        <span className="tile-text-symbol" aria-hidden="true">{tile.label_en}</span>
+      )}
       <span className="tile-label">{tile.label_en}</span>
     </button>
   );
@@ -84,14 +90,27 @@ export function CategoryTabs({
   );
 }
 
-export function FringeGrid({ category, onAdd }: { category: CategoryId; onAdd: AddTile }) {
+export function FringeGrid({
+  category,
+  personalTiles = [],
+  onAdd,
+}: {
+  category: CategoryId;
+  personalTiles?: readonly Tile[];
+  onAdd: AddTile;
+}) {
+  const visibleTiles = [
+    ...fringeTiles.filter((tile) => tile.category === category),
+    ...personalTiles.filter((tile) => {
+      if (category === "my_words") return true;
+      return "secondary_category" in tile && tile.secondary_category === category;
+    }),
+  ];
   return (
     <div className="fringe-grid" aria-label={`${category} words`}>
-      {fringeTiles
-        .filter((tile) => tile.category === category)
-        .map((tile) => (
+      {visibleTiles.map((tile) => (
           <TileButton key={tile.id} tile={tile} onAdd={onAdd} />
-        ))}
+      ))}
     </div>
   );
 }

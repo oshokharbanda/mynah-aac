@@ -41,11 +41,12 @@ export function isDistressContext(stripIds: readonly string[]) {
 export function buildCandidates(
   usage: Record<string, StoredTileUsage>,
   stripIds: readonly string[],
+  personalTiles: readonly Tile[] = [],
 ): PredictionCandidate[] {
   const hasDistressTopic = isDistressContext(stripIds);
   const selected = new Set(stripIds);
 
-  return fringeTiles
+  return [...fringeTiles, ...personalTiles]
     .filter(
       (tile) =>
         tile.approved &&
@@ -81,9 +82,10 @@ function fallbackReason(
 export function rankFallback(
   candidates: readonly PredictionCandidate[],
   stripIds: readonly string[],
+  vocabulary: readonly Tile[] = allTiles,
 ): PredictionItem[] {
   const lastId = stripIds.at(-1);
-  const lastTile = allTiles.find((tile) => tile.id === lastId);
+  const lastTile = vocabulary.find((tile) => tile.id === lastId);
   const scored = candidates.map((tile) => {
     let score = Math.min(tile.usage_count, 100) * 10;
 
@@ -106,8 +108,8 @@ export function rankFallback(
     }));
 }
 
-export function tilesForPrediction(items: readonly PredictionItem[]) {
-  const tilesById = new Map(fringeTiles.map((tile) => [tile.id, tile]));
+export function tilesForPrediction(items: readonly PredictionItem[], personalTiles: readonly Tile[] = []) {
+  const tilesById = new Map([...fringeTiles, ...personalTiles].map((tile) => [tile.id, tile]));
   return items
     .map((item) => tilesById.get(item.tile_id))
     .filter((tile): tile is Tile => Boolean(tile));

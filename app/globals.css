@@ -83,6 +83,104 @@ button:focus-visible {
   -webkit-tap-highlight-color: transparent;
 }
 
+.add-word,
+.hide-word,
+.form-cancel,
+.picture-kind-options button,
+.personal-tile-entry {
+  border: 2px solid #8eb6a8;
+  border-radius: 14px;
+  background: #f5fbf8;
+  color: #173f32;
+  font-weight: 800;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.add-word {
+  min-height: 58px;
+  width: 100%;
+  border-width: 3px;
+  background: #dff2e9;
+  font-size: 1.05rem;
+}
+
+.personal-tile-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.personal-tile-entry {
+  min-height: 50px;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.word-form {
+  display: grid;
+  gap: 18px;
+}
+
+.word-form label,
+.word-form fieldset {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  color: #29423b;
+  font-weight: 800;
+}
+
+.word-form input,
+.word-form select {
+  min-height: 52px;
+  width: 100%;
+  border: 2px solid #bfceca;
+  border-radius: 12px;
+  background: #fff;
+  padding: 8px 10px;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+}
+
+.picture-kind-options {
+  display: grid;
+  gap: 8px;
+}
+
+.picture-kind-options button {
+  min-height: 48px;
+  padding: 7px 10px;
+}
+
+.picture-kind-options button[aria-pressed="true"] {
+  border-color: #28765e;
+  background: #dff2e9;
+}
+
+.privacy-note,
+.form-note {
+  margin: 0;
+  color: #53605e;
+  font-size: 0.9rem !important;
+}
+
+.hide-word {
+  min-height: 52px;
+  border-color: #ba786f;
+  background: #fff8f6;
+  color: #783a31;
+}
+
+.form-cancel {
+  min-height: 52px;
+  width: 100%;
+  background: #fff;
+}
+
 /* The two persistent buttons are pill-shaped so they cannot be mistaken for word tiles. */
 .attention-button,
 .wait-button,
@@ -358,6 +456,27 @@ button:focus-visible {
   width: min(100%, 68px);
   height: 62px;
   object-fit: contain;
+}
+
+.tile-emoji {
+  display: grid;
+  width: min(100%, 72px);
+  height: 62px;
+  place-items: center;
+  font-size: 3.2rem;
+  line-height: 1;
+}
+
+.tile-text-symbol {
+  display: grid;
+  width: min(100%, 86px);
+  min-height: 62px;
+  place-items: center;
+  overflow-wrap: anywhere;
+  color: #233038;
+  font-size: 1.2rem;
+  font-weight: 900;
+  line-height: 1.05;
 }
 
 .tile-label {
@@ -649,6 +768,10 @@ button:focus-visible {
 
   .urgent-phrases {
     grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .picture-kind-options {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 

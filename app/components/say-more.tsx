@@ -34,7 +34,13 @@ export function SayMore({
           >
             {utterance.tiles.map((tile) => (
               <span className="say-more-symbol" key={tile.id}>
-                <img src={tile.symbol.localPath} alt={tile.label_en} />
+                {tile.symbol.localPath ? (
+                  <img src={tile.symbol.localPath} alt={tile.label_en} />
+                ) : tile.symbol.emoji ? (
+                  <span className="tile-emoji" role="img" aria-label={tile.label_en}>{tile.symbol.emoji}</span>
+                ) : (
+                  <span className="tile-text-symbol" aria-hidden="true">{tile.label_en}</span>
+                )}
               </span>
             ))}
           </button>

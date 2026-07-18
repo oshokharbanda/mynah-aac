@@ -1,6 +1,7 @@
 import { openDB, type DBSchema } from "idb";
 import { DEFAULT_VOICE, isVoiceId, type VoiceId } from "@/app/lib/audio-voices";
 import type { ExpansionUtterance } from "@/app/lib/expansions";
+import type { PersonalTileAsset, StoredPersonalTile } from "@/app/lib/personal-tiles";
 
 export type StoredTileUsage = {
   id: string;
@@ -56,6 +57,14 @@ interface MynahDatabase extends DBSchema {
     key: string;
     value: StoredExpansion;
   };
+  personalTiles: {
+    key: string;
+    value: StoredPersonalTile;
+  };
+  personalAssets: {
+    key: string;
+    value: PersonalTileAsset;
+  };
 }
 
 let database: ReturnType<typeof openDB<MynahDatabase>> | null = null;
@@ -67,7 +76,7 @@ function getDatabase() {
     throw new Error("IndexedDB is only available in the browser.");
   }
 
-  database ??= openDB<MynahDatabase>("mynah", 5, {
+  database ??= openDB<MynahDatabase>("mynah", 6, {
     upgrade(db) {
       if (!db.objectStoreNames.contains("tileUsage")) {
         db.createObjectStore("tileUsage", { keyPath: "id" });
@@ -83,6 +92,12 @@ function getDatabase() {
       }
       if (!db.objectStoreNames.contains("expansions")) {
         db.createObjectStore("expansions", { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains("personalTiles")) {
+        db.createObjectStore("personalTiles", { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains("personalAssets")) {
+        db.createObjectStore("personalAssets", { keyPath: "id" });
       }
     },
   });
@@ -232,4 +247,55 @@ export async function getSentenceSuggestionsPreference() {
 export async function setSentenceSuggestionsPreference(enabled: boolean) {
   const db = await getDatabase();
   await db.put("settings", { id: "sentence_suggestions", value: enabled ? "on" : "off" });
+}
+
+export async function getPersonalTiles() {
+  const db = await getDatabase();
+  const [tiles, assets] = await Promise.all([db.getAll("personalTiles"), db.getAll("personalAssets")]);
+  const assetById = new Map(assets.map((asset) => [asset.id, asset]));
+  return tiles
+    .sort((left, right) => left.created_at - right.created_at)
+    .map((tile) => ({ tile, asset: assetById.get(tile.id) }));
+}
+
+export async function savePersonalTile(tile: StoredPersonalTile, photo: Blob | null) {
+  const db = await getDatabase();
+  const tx = db.transaction(["personalTiles", "personalAssets"], "readwrite");
+  const priorAsset = await tx.objectStore("personalAssets").get(tile.id);
+  await tx.objectStore("personalTiles").put(tile);
+  await tx.objectStore("personalAssets").put({
+    id: tile.id,
+    photo: photo ?? priorAsset?.photo ?? null,
+    audio: priorAsset?.audio ?? {},
+  });
+  await tx.done;
+}
+
+export async function savePersonalTileAudio(tileId: string, voice: VoiceId, audio: Blob) {
+  const db = await getDatabase();
+  const tx = db.transaction(["personalTiles", "personalAssets"], "readwrite");
+  const tile = await tx.objectStore("personalTiles").get(tileId);
+  if (!tile) throw new Error("Personal tile not found.");
+  const asset = await tx.objectStore("personalAssets").get(tileId);
+  await tx.objectStore("personalAssets").put({
+    id: tileId,
+    photo: asset?.photo ?? null,
+    audio: { ...(asset?.audio ?? {}), [voice]: audio },
+  });
+  await tx.objectStore("personalTiles").put({ ...tile, voice_pending: false, updated_at: Date.now() });
+  await tx.done;
+}
+
+export async function setPersonalTileVoicePending(tileId: string, voicePending: boolean) {
+  const db = await getDatabase();
+  const tile = await db.get("personalTiles", tileId);
+  if (!tile) return;
+  await db.put("personalTiles", { ...tile, voice_pending: voicePending, updated_at: Date.now() });
+}
+
+export async function hidePersonalTile(tileId: string) {
+  const db = await getDatabase();
+  const tile = await db.get("personalTiles", tileId);
+  if (!tile) return;
+  await db.put("personalTiles", { ...tile, hidden: true, updated_at: Date.now() });
 }
