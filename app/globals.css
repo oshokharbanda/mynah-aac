@@ -711,24 +711,28 @@ button:focus-visible {
     padding: 4px;
   }
 
-  .core-grid {
+  .core-grid,
+  .fringe-grid {
     grid-template-columns: repeat(6, minmax(96px, 1fr));
     gap: 8px;
   }
 
-  .core-grid .tile {
+  .core-grid .tile,
+  .fringe-grid .tile {
     min-height: 86px;
     grid-template-rows: minmax(42px, 1fr) auto;
     border-radius: 15px;
     padding: 5px;
   }
 
-  .core-grid .tile img {
+  .core-grid .tile img,
+  .fringe-grid .tile img {
     width: 48px;
     height: 42px;
   }
 
-  .core-grid .tile-label {
+  .core-grid .tile-label,
+  .fringe-grid .tile-label {
     font-size: 0.86rem;
   }
 }
