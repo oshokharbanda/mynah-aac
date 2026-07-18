@@ -70,3 +70,9 @@
 - Measured the production build at exactly 1024 × 768: header 0px, quick communication controls 126px, sentence strip 62px, suggestions 115.69px, and core grid 368px (24 tiles at 156.16 × 86px). Including top padding and vertical gaps, the core grid ends at y=711.69px, leaving 56.31px visible with no scroll.
 - Sentence construction now stays in one fixed 66px row on a 390px phone viewport. Undo is a 46px inline icon; Clear is a visibly smaller 36px icon and requires a second tap within four seconds.
 - Verified the production build, lint, service-worker syntax, and rendered 3 × 8 / 4 × 6 / 6 × 4 breakpoint layouts through the local production server.
+
+## 2026-07-19 — Say More (model verification pending)
+
+- Added the guarded `/api/expand` route, picture-only Say More panel, caregiver on/off setting, and IndexedDB expansion records for offered utterances, intent, selection, and dismissal.
+- Verified the no-key safety path in the production build: a valid `water` request returned `200`, `x-mynah-source: fallback`, and `{"utterances":[]}`. In the local child UI, one tapped `water` showed no panel and the next tap produced `water I` with no panel.
+- Production currently has no `OPENAI_API_KEY`, so the required real model tests (water at meal, bed at 20:30), actual JSON samples, and p50 `/api/expand` response time cannot yet be recorded. No model JSON is fabricated here.

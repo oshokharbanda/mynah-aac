@@ -6,12 +6,16 @@ export function CaregiverCredits({
   onChangeVoice,
   onPreviewVoice,
   onEndSession,
+  sentenceSuggestionsEnabled,
+  onChangeSentenceSuggestions,
 }: {
   onClose: () => void;
   selectedVoice: VoiceId;
   onChangeVoice: (voice: VoiceId) => void;
   onPreviewVoice: (voice: VoiceId) => void;
   onEndSession: () => void;
+  sentenceSuggestionsEnabled: boolean;
+  onChangeSentenceSuggestions: (enabled: boolean) => void;
 }) {
   return (
     <main className="caregiver-screen">
@@ -37,6 +41,19 @@ export function CaregiverCredits({
         >
           Visit ARASAAC
         </a>
+      </section>
+
+      <section className="credits-card" aria-labelledby="sentence-suggestions">
+        <h2 id="sentence-suggestions">Sentence suggestions</h2>
+        <p>Offer optional picture-only sentence choices after one tapped noun or verb.</p>
+        <button
+          className="sentence-suggestions-toggle"
+          type="button"
+          aria-pressed={sentenceSuggestionsEnabled}
+          onClick={() => onChangeSentenceSuggestions(!sentenceSuggestionsEnabled)}
+        >
+          {sentenceSuggestionsEnabled ? "On" : "Off"}
+        </button>
       </section>
 
       <section className="credits-card" aria-labelledby="voice-choice">

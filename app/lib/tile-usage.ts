@@ -1,5 +1,6 @@
 import { openDB, type DBSchema } from "idb";
 import { DEFAULT_VOICE, isVoiceId, type VoiceId } from "@/app/lib/audio-voices";
+import type { ExpansionUtterance } from "@/app/lib/expansions";
 
 export type StoredTileUsage = {
   id: string;
@@ -25,6 +26,15 @@ export type StoredUtterance = {
   spoken_at: number;
 };
 
+export type StoredExpansion = {
+  id: string;
+  seed_tile_id: string;
+  utterances: ExpansionUtterance[];
+  chosen_index: number | null;
+  dismissed: boolean;
+  created_at: number;
+};
+
 interface MynahDatabase extends DBSchema {
   tileUsage: {
     key: string;
@@ -42,17 +52,22 @@ interface MynahDatabase extends DBSchema {
     key: string;
     value: StoredUtterance;
   };
+  expansions: {
+    key: string;
+    value: StoredExpansion;
+  };
 }
 
 let database: ReturnType<typeof openDB<MynahDatabase>> | null = null;
 const pendingPredictionWrites = new Map<string, Promise<void>>();
+const pendingExpansionWrites = new Map<string, Promise<void>>();
 
 function getDatabase() {
   if (typeof indexedDB === "undefined") {
     throw new Error("IndexedDB is only available in the browser.");
   }
 
-  database ??= openDB<MynahDatabase>("mynah", 4, {
+  database ??= openDB<MynahDatabase>("mynah", 5, {
     upgrade(db) {
       if (!db.objectStoreNames.contains("tileUsage")) {
         db.createObjectStore("tileUsage", { keyPath: "id" });
@@ -65,6 +80,9 @@ function getDatabase() {
       }
       if (!db.objectStoreNames.contains("sessionUtterances")) {
         db.createObjectStore("sessionUtterances", { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains("expansions")) {
+        db.createObjectStore("expansions", { keyPath: "id" });
       }
     },
   });
@@ -165,4 +183,53 @@ export async function recordSessionUtterance(
 export async function clearSessionUtterances() {
   const db = await getDatabase();
   await db.clear("sessionUtterances");
+}
+
+export function createExpansionId() {
+  return crypto.randomUUID();
+}
+
+export function recordExpansion(
+  expansion: Omit<StoredExpansion, "created_at" | "chosen_index" | "dismissed">,
+) {
+  const stored: StoredExpansion = {
+    ...expansion,
+    created_at: Date.now(),
+    chosen_index: null,
+    dismissed: false,
+  };
+  const write = (async () => {
+    const db = await getDatabase();
+    await db.put("expansions", stored);
+  })();
+
+  pendingExpansionWrites.set(stored.id, write);
+  return write.finally(() => pendingExpansionWrites.delete(stored.id));
+}
+
+export async function markExpansionChosen(expansionId: string, chosenIndex: number) {
+  await pendingExpansionWrites.get(expansionId);
+  const db = await getDatabase();
+  const expansion = await db.get("expansions", expansionId);
+  if (!expansion || expansion.dismissed || expansion.chosen_index !== null) return;
+  await db.put("expansions", { ...expansion, chosen_index: chosenIndex });
+}
+
+export async function markExpansionDismissed(expansionId: string) {
+  await pendingExpansionWrites.get(expansionId);
+  const db = await getDatabase();
+  const expansion = await db.get("expansions", expansionId);
+  if (!expansion || expansion.dismissed || expansion.chosen_index !== null) return;
+  await db.put("expansions", { ...expansion, dismissed: true });
+}
+
+export async function getSentenceSuggestionsPreference() {
+  const db = await getDatabase();
+  const setting = await db.get("settings", "sentence_suggestions");
+  return setting?.value !== "off";
+}
+
+export async function setSentenceSuggestionsPreference(enabled: boolean) {
+  const db = await getDatabase();
+  await db.put("settings", { id: "sentence_suggestions", value: enabled ? "on" : "off" });
 }

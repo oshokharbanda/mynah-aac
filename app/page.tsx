@@ -4,11 +4,13 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CategoryTabs, CoreGrid, FringeGrid, SuggestionRow } from "@/app/components/board";
 import { CommunicationTools } from "@/app/components/communication-tools";
 import { CaregiverCredits } from "@/app/components/caregiver-credits";
+import { SayMore } from "@/app/components/say-more";
 import { allTiles, categories, coreTiles, fringeTiles, type CategoryId, type Tile } from "@/app/data/tiles";
 import { interactionNow, recordInteractionMetric } from "@/app/lib/interaction-metrics";
 import { DEFAULT_VOICE, type VoiceId } from "@/app/lib/audio-voices";
 import { playCachedSentence, playPreGeneratedPhrase, playSentenceWithFallback, playTileClip } from "@/app/lib/audio-playback";
 import { phraseById } from "@/app/lib/quick-phrases";
+import { canExpandTile, type ExpansionResponse, type ExpansionUtterance } from "@/app/lib/expansions";
 import {
   buildCandidates,
   predictionCacheKey,
@@ -21,15 +23,21 @@ import {
 import { prepareSpeechVoices, speakText } from "@/app/lib/speech";
 import {
   clearSessionUtterances,
+  createExpansionId,
   getTileUsage,
   getSessionUtterances,
   markSuggestedTileTapped,
   getVoicePreference,
+  getSentenceSuggestionsPreference,
+  markExpansionChosen,
+  markExpansionDismissed,
   createPredictionId,
   recordPrediction,
+  recordExpansion,
   recordSessionUtterance,
   recordTileUse,
   setVoicePreference,
+  setSentenceSuggestionsPreference,
   type StoredUtterance,
   type StoredTileUsage,
 } from "@/app/lib/tile-usage";
@@ -50,6 +58,8 @@ export default function Home() {
   const [voice, setVoice] = useState<VoiceId>(DEFAULT_VOICE);
   const [recentUtterances, setRecentUtterances] = useState<StoredUtterance[]>([]);
   const [clearArmed, setClearArmed] = useState(false);
+  const [sentenceSuggestionsEnabled, setSentenceSuggestionsEnabled] = useState(true);
+  const [expansionItems, setExpansionItems] = useState<ExpansionUtterance[]>([]);
   const caregiverTapCount = useRef(0);
   const clearConfirmTimer = useRef<number | null>(null);
   const stripTapStartedAt = useRef<number | null>(null);
@@ -58,6 +68,10 @@ export default function Home() {
   const currentStripHash = useRef("");
   const predictionLogId = useRef<string | null>(null);
   const predictionCache = useRef(new Map<string, CachedPrediction>());
+  const expansionAbort = useRef<AbortController | null>(null);
+  const expansionSequence = useRef(0);
+  const expansionLogId = useRef<string | null>(null);
+  const dismissedExpansionHash = useRef<string | null>(null);
 
   const selectedIds = useMemo(() => selectedTiles.map((tile) => tile.id), [selectedTiles]);
   const currentHash = useMemo(() => stripHash(selectedIds), [selectedIds]);
@@ -68,6 +82,15 @@ export default function Home() {
   const cacheKey = useMemo(
     () => predictionCacheKey(selectedIds, DEFAULT_SCENE, candidates),
     [candidates, selectedIds],
+  );
+  const visibleExpansions = useMemo(
+    () => expansionItems.flatMap((utterance) => {
+      const tiles = utterance.tile_ids
+        .map((tileId) => allTiles.find((tile) => tile.id === tileId))
+        .filter((tile): tile is Tile => Boolean(tile));
+      return tiles.length === utterance.tile_ids.length ? [{ ...utterance, tiles }] : [];
+    }),
+    [expansionItems],
   );
 
   useLayoutEffect(() => {
@@ -91,6 +114,12 @@ export default function Home() {
   useEffect(() => {
     void getVoicePreference().then(setVoice).catch(() => {
       // The bundled default remains available if private storage is unavailable.
+    });
+  }, []);
+
+  useEffect(() => {
+    void getSentenceSuggestionsPreference().then(setSentenceSuggestionsEnabled).catch(() => {
+      // Sentence suggestions stay enabled by default when private storage is unavailable.
     });
   }, []);
 
@@ -188,6 +217,72 @@ export default function Home() {
     return () => controller.abort();
   }, [cacheKey, candidates, currentHash, selectedIds, selectedTiles]);
 
+  useEffect(() => {
+    const sequence = expansionSequence.current + 1;
+    expansionSequence.current = sequence;
+    expansionAbort.current?.abort();
+    expansionAbort.current = null;
+    setExpansionItems([]);
+
+    if (dismissedExpansionHash.current && dismissedExpansionHash.current !== currentHash) {
+      dismissedExpansionHash.current = null;
+    }
+
+    const seed = selectedTiles.length === 1 ? selectedTiles[0] : undefined;
+    if (!seed || !sentenceSuggestionsEnabled || !canExpandTile(seed) || dismissedExpansionHash.current === currentHash || typeof navigator === "undefined" || !navigator.onLine) return;
+
+    const seedTile: Tile = seed;
+    const controller = new AbortController();
+    expansionAbort.current = controller;
+    const pause = window.setTimeout(() => {
+      const timeout = window.setTimeout(() => controller.abort(), 1_500);
+      void fetch("/api/expand", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-mynah-request-sequence": String(sequence),
+          "x-mynah-strip-hash": currentHash,
+        },
+        body: JSON.stringify({
+          seed_tile_id: seedTile.id,
+          scene: DEFAULT_SCENE,
+          local_time: new Date().toTimeString().slice(0, 5),
+          recent_utterances: recentUtterances.slice(0, 5).map(({ text, tile_ids }) => ({ text, tile_ids })),
+          personal_tile_ids: allTiles.filter((tile) => tile.origin === "personal").map((tile) => tile.id),
+        }),
+        signal: controller.signal,
+      })
+        .then(async (response) => {
+          const result = (await response.json()) as ExpansionResponse;
+          if (
+            response.headers.get("x-mynah-source") !== "model" ||
+            !Array.isArray(result.utterances) ||
+            controller.signal.aborted ||
+            expansionSequence.current !== sequence ||
+            currentStripHash.current !== currentHash
+          ) return;
+
+          const utterances = result.utterances.slice(0, 3);
+          if (!utterances.length) return;
+          setExpansionItems(utterances);
+          const expansionId = createExpansionId();
+          expansionLogId.current = expansionId;
+          void recordExpansion({ id: expansionId, seed_tile_id: seedTile.id, utterances }).catch(() => {
+            // A caregiver metric must never create a child-facing failure.
+          });
+        })
+        .catch(() => {
+          // Timeout, offline, and server failures intentionally show nothing.
+        })
+        .finally(() => window.clearTimeout(timeout));
+    }, 500);
+
+    return () => {
+      window.clearTimeout(pause);
+      controller.abort();
+    };
+  }, [currentHash, recentUtterances, selectedTiles, sentenceSuggestionsEnabled]);
+
   const spokenText = useMemo(
     () =>
       selectedTiles
@@ -201,6 +296,11 @@ export default function Home() {
     requestAbort.current?.abort();
     requestAbort.current = null;
     predictionLogId.current = null;
+    expansionSequence.current += 1;
+    expansionAbort.current?.abort();
+    expansionAbort.current = null;
+    expansionLogId.current = null;
+    setExpansionItems([]);
     const nextIds = nextTiles.map((tile) => tile.id);
     setSuggestionItems(rankFallback(buildCandidates(usageByTile, nextIds), nextIds));
   }
@@ -278,6 +378,41 @@ export default function Home() {
     rememberUtterance({ text: spokenText, tile_ids: selectedIds, phrase_id: null });
   }
 
+  function dismissSayMore() {
+    dismissedExpansionHash.current = currentStripHash.current;
+    setExpansionItems([]);
+    const expansionId = expansionLogId.current;
+    expansionLogId.current = null;
+    if (expansionId) {
+      void markExpansionDismissed(expansionId).catch(() => {
+        // Logging must never change the child-facing dismissal.
+      });
+    }
+  }
+
+  function chooseExpansion(utterance: ExpansionUtterance & { tiles: Tile[] }, index: number) {
+    const nextTiles = utterance.tiles;
+    const expansionId = expansionLogId.current;
+    invalidatePrediction(nextTiles);
+    setSelectedTiles(nextTiles);
+    setExpansionItems([]);
+    if (expansionId) {
+      void markExpansionChosen(expansionId, index).catch(() => {
+        // Logging must never change the selected sentence.
+      });
+    }
+    requestAnimationFrame(() => {
+      void playCachedSentence(nextTiles, voice).then((played) => {
+        if (!played) speakText(nextTiles.map((tile) => tile.speech_en).join(" "), "en-US", interactionNow());
+      });
+    });
+    rememberUtterance({
+      text: nextTiles.map((tile) => tile.speech_en).join(" "),
+      tile_ids: nextTiles.map((tile) => tile.id),
+      phrase_id: null,
+    });
+  }
+
   function rememberUtterance(utterance: Omit<StoredUtterance, "id" | "spoken_at">) {
     void recordSessionUtterance(utterance)
       .then(setRecentUtterances)
@@ -313,6 +448,14 @@ export default function Home() {
     });
   }
 
+  function changeSentenceSuggestions(enabled: boolean) {
+    setSentenceSuggestionsEnabled(enabled);
+    if (!enabled) dismissSayMore();
+    void setSentenceSuggestionsPreference(enabled).catch(() => {
+      // The visible choice remains correct even if private storage is unavailable.
+    });
+  }
+
   function previewVoice(previewVoice: VoiceId) {
     const previewTile = coreTiles.find((tile) => tile.id === "i");
     if (previewTile) playTileClip(previewTile, previewVoice, interactionNow());
@@ -342,6 +485,8 @@ export default function Home() {
         onChangeVoice={changeVoice}
         onPreviewVoice={previewVoice}
         onEndSession={endSession}
+        sentenceSuggestionsEnabled={sentenceSuggestionsEnabled}
+        onChangeSentenceSuggestions={changeSentenceSuggestions}
       />
     );
   }
@@ -402,6 +547,12 @@ export default function Home() {
           </button>
         </div>
       </section>
+
+      <SayMore
+        utterances={visibleExpansions}
+        onChoose={chooseExpansion}
+        onDismiss={dismissSayMore}
+      />
 
       <SuggestionRow
         suggestions={tilesForPrediction(suggestionItems)}

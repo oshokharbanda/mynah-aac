@@ -37,6 +37,12 @@ For the public Vercel deployment, set `OPENAI_API_KEY` server-side. `store: fals
 
 Each tile tap updates its `count` and `last_used_at` in IndexedDB through `idb`. This stays on the device and never blocks the child’s tap. The board also stores every fallback, cached, and model prediction with strip state, suggested tile IDs/ranks/reasons, and the tile selected from a suggestion, enabling an on-device suggestion hit-rate and taps-saved analysis later. This stays on the device; only the transient candidate request reaches the prediction API.
 
+## Say More
+
+After a short pause on one noun or verb, Mynah can offer up to three optional picture-only sentence strips. They are rendered only after a valid `/api/expand` model response; there is no spinner, local fallback, or child-facing error. Selecting one fills the sentence strip first and then plays committed per-word clips. The caregiver can turn sentence suggestions off on this device.
+
+`/api/expand` uses the same shared public rate and daily budget as `/api/board`, a 1.5-second abort, strict Structured Outputs, and server-side vocabulary/seed/duplicate validation. Every offered, selected, or dismissed expansion remains only in IndexedDB for caregiver demo metrics.
+
 ## Voice and offline audio
 
 Each of the 60 English tiles has a committed MP3 clip for each of three caregiver-selectable ElevenLabs voices. They live in `public/audio/en/<voice>/<tile_id>.mp3`, are pre-cached by the service worker, and play first on every tile tap. The selected voice is persisted in IndexedDB.

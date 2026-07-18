@@ -1,13 +1,12 @@
 import OpenAI from "openai";
 import { NextRequest, NextResponse } from "next/server";
 import { coreTiles, type Tile } from "@/app/data/tiles";
+import { mayUseModel } from "@/app/lib/api-guards";
 
 export const runtime = "nodejs";
 
 const MODEL = "gpt-5.6";
 const REQUEST_TIMEOUT_MS = 900;
-const DEFAULT_RATE_LIMIT = 20;
-const DEFAULT_DAILY_CEILING = 500;
 const MAX_CACHE_ENTRIES = 500;
 
 const systemPrompt = `You rank vocabulary tiles for a child using an AAC communication board.
@@ -51,48 +50,12 @@ type BoardRequest = {
   local_time: string;
 };
 
-const requestBuckets = new Map<string, { count: number; resetAt: number }>();
 const predictionCache = new Map<string, Array<{ tile_id: string; rank: number; reason: string }>>();
-let dailyCount = 0;
-let dailyDate = "";
 const guardedCandidateIds = new Set(["hurt", "sad", "angry", "scared", "tired"]);
 const coreTileIds = new Set(coreTiles.map((tile) => tile.id));
 const partOfSpeech = new Set<Tile["part_of_speech"]>([
   "pronoun", "verb", "noun", "adjective", "social", "question", "negation", "preposition", "determiner",
 ]);
-
-function configuredPositiveInt(value: string | undefined, fallback: number) {
-  const parsed = Number.parseInt(value ?? "", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function clientIp(request: NextRequest) {
-  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? request.headers.get("x-real-ip") ?? "unknown";
-}
-
-function mayUseModel(request: NextRequest) {
-  const now = Date.now();
-  const ip = clientIp(request);
-  const rateLimit = configuredPositiveInt(process.env.MYNAH_BOARD_RATE_LIMIT, DEFAULT_RATE_LIMIT);
-  const bucket = requestBuckets.get(ip);
-  const current = !bucket || bucket.resetAt <= now ? { count: 0, resetAt: now + 60_000 } : bucket;
-
-  if (current.count >= rateLimit) return { allowed: false, reason: "rate_limit" } as const;
-  current.count += 1;
-  requestBuckets.set(ip, current);
-
-  const today = new Date().toISOString().slice(0, 10);
-  if (dailyDate !== today) {
-    dailyDate = today;
-    dailyCount = 0;
-  }
-
-  const ceiling = configuredPositiveInt(process.env.MYNAH_BOARD_DAILY_CEILING, DEFAULT_DAILY_CEILING);
-  if (dailyCount >= ceiling) return { allowed: false, reason: "daily_ceiling" } as const;
-
-  dailyCount += 1;
-  return { allowed: true } as const;
-}
 
 function isString(value: unknown, maxLength = 100): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= maxLength;
