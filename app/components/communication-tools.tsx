@@ -1,4 +1,4 @@
-import { attentionPhrase, notThatPhrase, urgentPhrases } from "@/app/lib/quick-phrases";
+import { attentionPhrase, notThatPhrase, urgentPhrases, waitStillSayingPhrase } from "@/app/lib/quick-phrases";
 import type { StoredUtterance } from "@/app/lib/tile-usage";
 
 export function CommunicationTools({
@@ -12,13 +12,20 @@ export function CommunicationTools({
 }) {
   return (
     <section className="communication-tools" aria-label="Quick communication">
-      <div className="attention-actions">
+      <div className="conversation-repair-actions" aria-label="Conversation repair">
         <button
           className="attention-button"
           type="button"
           onClick={() => onSpeakPhrase(attentionPhrase.id)}
         >
           {attentionPhrase.label}
+        </button>
+        <button
+          className="wait-button"
+          type="button"
+          onClick={() => onSpeakPhrase(waitStillSayingPhrase.id)}
+        >
+          {waitStillSayingPhrase.label}
         </button>
         <button
           className="not-that-button"

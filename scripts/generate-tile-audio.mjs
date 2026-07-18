@@ -10,6 +10,7 @@ const voices = [
 // These are deliberate, whole-utterance actions rather than vocabulary tiles.
 const systemPhrases = [
   { id: "attention", text: "Excuse me. I have something to say." },
+  { id: "wait-still-saying", text: "Wait — I'm still saying it." },
   { id: "not-that", text: "That's not what I meant." },
   { id: "bathroom", text: "Bathroom." },
   { id: "hurt", text: "I'm hurt." },

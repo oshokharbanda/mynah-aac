@@ -10,6 +10,18 @@ export const notThatPhrase = {
   speech: "That's not what I meant.",
 } as const;
 
+export const waitStillSayingPhrase = {
+  id: "wait-still-saying",
+  label: "Wait — I'm still saying it.",
+  speech: "Wait — I'm still saying it.",
+} as const;
+
+export const conversationRepairPhrases = [
+  attentionPhrase,
+  waitStillSayingPhrase,
+  notThatPhrase,
+] as const;
+
 export const urgentPhrases = [
   { id: "bathroom", label: "Bathroom", speech: "Bathroom." },
   { id: "hurt", label: "I'm hurt", speech: "I'm hurt." },
@@ -19,7 +31,7 @@ export const urgentPhrases = [
   { id: "finished", label: "I'm finished", speech: "I'm finished." },
 ] as const;
 
-export const preGeneratedPhrases = [attentionPhrase, notThatPhrase, ...urgentPhrases] as const;
+export const preGeneratedPhrases = [...conversationRepairPhrases, ...urgentPhrases] as const;
 
 export type PreGeneratedPhrase = (typeof preGeneratedPhrases)[number];
 

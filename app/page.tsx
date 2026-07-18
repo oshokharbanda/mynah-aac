@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element -- local ARASAAC images must remain direct, cacheable URLs offline. */
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -421,7 +422,7 @@ export default function Home() {
   }
 
   function speakQuickPhrase(phraseId: string) {
-    const raisedVolume = phraseId === "attention" || phraseId === "not-that";
+    const raisedVolume = phraseId === "attention" || phraseId === "wait-still-saying" || phraseId === "not-that";
     playPreGeneratedPhrase(phraseId, voice, raisedVolume);
     const phrase = phraseById(phraseId);
     if (phrase) rememberUtterance({ text: phrase.speech, tile_ids: [], phrase_id: phrase.id });
@@ -429,7 +430,11 @@ export default function Home() {
 
   function replayUtterance(utterance: StoredUtterance) {
     if (utterance.phrase_id) {
-      playPreGeneratedPhrase(utterance.phrase_id, voice, utterance.phrase_id === "attention" || utterance.phrase_id === "not-that");
+      playPreGeneratedPhrase(
+        utterance.phrase_id,
+        voice,
+        utterance.phrase_id === "attention" || utterance.phrase_id === "wait-still-saying" || utterance.phrase_id === "not-that",
+      );
       return;
     }
     const tiles = utterance.tile_ids
@@ -509,8 +514,12 @@ export default function Home() {
           {selectedTiles.length ? (
             <span className="sentence-tiles">
               {selectedTiles.map((tile, index) => (
-                <span className="sentence-word" key={`${tile.id}-${index}`}>
-                  {tile.label_en}
+                <span
+                  className={`sentence-word${index === selectedTiles.length - 1 ? " sentence-word-pulse" : ""}`}
+                  key={`${tile.id}-${index}`}
+                >
+                  <img src={tile.symbol.localPath} alt="" />
+                  <span className="sentence-word-label">{tile.label_en}</span>
                 </span>
               ))}
             </span>

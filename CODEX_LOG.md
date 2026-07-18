@@ -76,3 +76,9 @@
 - Added the guarded `/api/expand` route, picture-only Say More panel, caregiver on/off setting, and IndexedDB expansion records for offered utterances, intent, selection, and dismissal.
 - Verified the no-key safety path in the production build: a valid `water` request returned `200`, `x-mynah-source: fallback`, and `{"utterances":[]}`. In the local child UI, one tapped `water` showed no panel and the next tap produced `water I` with no panel.
 - Production currently has no `OPENAI_API_KEY`, so the required real model tests (water at meal, bed at 20:30), actual JSON samples, and p50 `/api/expand` response time cannot yet be recorded. No model JSON is fabricated here.
+
+## 2026-07-19 — Conversation repair and visible sentence strip
+
+- Added the offline whole-utterance repair phrase “Wait — I’m still saying it.” beside Attention and “That’s not what I meant.” The three are one visibly grouped, persistent conversation-repair set and have committed clips for Sarah, Liam, and Will.
+- Reworked the sentence strip to show large local symbols with labels. Every newly landed tile receives a 120ms visual pulse; the sentence strip is updated before any selected Say More audio starts.
+- Verified 207 committed offline MP3s, the audio manifest, lint, production build, service-worker syntax, and a 1024 × 768 rendered production layout. The 90px sentence strip leaves the 6 × 4 core grid fully visible, ending at y=747.69px.

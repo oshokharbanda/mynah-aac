@@ -57,19 +57,21 @@ button:focus-visible {
   margin-bottom: 20px;
 }
 
-.attention-actions {
+.conversation-repair-actions {
   position: sticky;
   top: max(8px, env(safe-area-inset-top));
   z-index: 10;
   display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  border: 2px solid #d0bee3;
   border-radius: 20px;
-  background: var(--paper);
-  padding: 6px 0;
+  background: #fbf8ff;
+  padding: 6px;
 }
 
 .attention-button,
+.wait-button,
 .not-that-button,
 .urgent-phrase,
 .recent-utterances button,
@@ -83,10 +85,11 @@ button:focus-visible {
 
 /* The two persistent buttons are pill-shaped so they cannot be mistaken for word tiles. */
 .attention-button,
+.wait-button,
 .not-that-button {
   min-height: 68px;
-  border-radius: 999px;
-  padding: 12px 16px;
+  border-radius: 16px;
+  padding: 8px;
 }
 
 .attention-button {
@@ -100,7 +103,14 @@ button:focus-visible {
   border: 3px solid #765b91;
   background: #eee6fb;
   color: #392a4b;
-  font-size: clamp(0.91rem, 3.4vw, 1.08rem);
+  font-size: clamp(0.76rem, 3vw, 0.98rem);
+}
+
+.wait-button {
+  border: 3px solid #536fa7;
+  background: #dde7ff;
+  color: #263d6d;
+  font-size: clamp(0.76rem, 3vw, 0.98rem);
 }
 
 .urgent-phrases {
@@ -167,7 +177,7 @@ button:focus-visible {
 
 .sentence-strip {
   display: flex;
-  height: 66px;
+  height: 104px;
   min-width: 0;
   flex: 1;
   align-items: center;
@@ -200,13 +210,47 @@ button:focus-visible {
 }
 
 .sentence-word {
+  display: grid;
+  min-width: 76px;
+  height: 80px;
   flex: 0 0 auto;
-  border-radius: 12px;
+  grid-template-rows: minmax(42px, 1fr) auto;
+  align-items: center;
+  justify-items: center;
+  border-radius: 14px;
   background: #e5f2ed;
-  padding: 7px 10px;
+  padding: 5px 8px;
   color: #153b32;
-  font-size: clamp(1rem, 3.6vw, 1.24rem);
+  font-size: clamp(0.8rem, 3vw, 1rem);
   font-weight: 800;
+}
+
+.sentence-word img {
+  width: 58px;
+  height: 52px;
+  object-fit: contain;
+}
+
+.sentence-word-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes sentence-land {
+  0% { transform: scale(0.88); background: #bde8d5; }
+  100% { transform: scale(1); background: #e5f2ed; }
+}
+
+.sentence-word-pulse {
+  animation: sentence-land 120ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sentence-word-pulse {
+    animation: none;
+  }
 }
 
 .speak-icon {
@@ -619,15 +663,17 @@ button:focus-visible {
     margin-bottom: 8px;
   }
 
-  .attention-actions {
-    gap: 8px;
-    padding: 2px 0;
+  .conversation-repair-actions {
+    gap: 6px;
+    border-radius: 14px;
+    padding: 4px;
   }
 
   .attention-button,
+  .wait-button,
   .not-that-button {
     min-height: 58px;
-    padding: 8px 14px;
+    padding: 6px;
   }
 
   .urgent-phrases {
@@ -648,7 +694,21 @@ button:focus-visible {
   }
 
   .sentence-strip {
-    height: 62px;
+    height: 90px;
+  }
+
+  .sentence-word {
+    min-width: 72px;
+    height: 72px;
+    grid-template-rows: minmax(38px, 1fr) auto;
+    border-radius: 12px;
+    padding: 4px 6px;
+    font-size: 0.82rem;
+  }
+
+  .sentence-word img {
+    width: 52px;
+    height: 46px;
   }
 
   .suggestion-row {

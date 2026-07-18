@@ -1,6 +1,6 @@
 importScripts("/audio-manifest.js");
 
-const CACHE_NAME = "mynah-core-v6";
+const CACHE_NAME = "mynah-core-v7";
 const CORE_ASSETS = [
   "/",
   "/manifest.webmanifest",
