@@ -29,3 +29,13 @@
 - Checked source data for second-language fields and Devanagari characters: none remain. TypeScript also validates every tile record against the English-only schema.
 - Measured on the updated production build at a 390px viewport: core tile `I` rendered at **103.66 × 128px**; tap to committed sentence-strip update was **2.80ms**; tap to Web Speech dispatch was **0.50ms**; Web Speech `onstart` arrived at **13.60ms**.
 - IndexedDB usage persistence remains implemented as `{ count, last_used_at }` writes on every tap. The controlled browser used for measurements does not expose IndexedDB, so a direct storage read could not be performed there.
+
+## 2026-07-18 — Day 2 prediction foundation
+
+- Added the prediction-only `SuggestionRow` flow. It is separate from `CoreGrid`, capped at four, and only adds a tile after the child taps it. Core positions remain untouched.
+- Added `/api/board` with GPT-5.6 Structured Outputs. Its result shape is `{ items: [{ tile_id, reason }] }`; array order is rank, reasons are capped at 80 characters, and reasons are never shown to the child.
+- The client paints a local usage-and-grammar fallback first. It sends a monotonic request sequence and strip hash with the request; each tap, undo, and clear immediately aborts the prior request and clears old suggestions. Responses whose sequence or hash no longer match are discarded.
+- Added server-side candidate validation, a 900ms OpenAI abort timeout, per-IP in-memory rate limiting, an in-memory daily ceiling, and a no-key fallback. All such conditions retain the local board fallback with no error UI. The in-memory ceiling is per warm server instance; a true cross-instance ceiling needs shared infrastructure before high-traffic use.
+- IndexedDB schema is now version 2. It retains tile usage and adds prediction records with strip state, items/reasons, source (`fallback` or `model`), and a subsequently tapped suggestion ID. Prediction writes are queued so a very fast suggestion tap is still attributed after its record is stored.
+- Verified production lint and build pass. In a local production run, the fallback rendered immediately; after tapping `I` then `want`, the strip read `Speak: I want` and the suggestion row contained noun tiles (`apple`, `baby`, `ball`, `banana`). The automated browser environment does not expose IndexedDB, so persistence content still requires a physical-device verification.
+- Verified the no-key route contract with a loopback production POST: it returned `{"items":[],"source":"fallback"}` without exposing an error. A local UI check then selected `apple` from the row and produced `Speak: I want apple`; core tile count remained 24.

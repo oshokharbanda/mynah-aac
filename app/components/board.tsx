@@ -98,10 +98,10 @@ export function FringeGrid({ category, onAdd }: { category: CategoryId; onAdd: A
 
 export function SuggestionRow({
   suggestions,
-  onAdd,
+  onSuggestionTap,
 }: {
   suggestions: readonly Tile[];
-  onAdd: AddTile;
+  onSuggestionTap: (tile: Tile) => void;
 }) {
   if (!suggestions.length) return null;
 
@@ -110,7 +110,7 @@ export function SuggestionRow({
       <h2 id="suggestion-heading">You might want</h2>
       <div className="suggestion-tiles">
         {suggestions.slice(0, 4).map((tile) => (
-          <TileButton key={tile.id} tile={tile} onAdd={onAdd} />
+          <TileButton key={tile.id} tile={tile} onAdd={onSuggestionTap} />
         ))}
       </div>
     </aside>

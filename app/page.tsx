@@ -5,8 +5,23 @@ import { CategoryTabs, CoreGrid, FringeGrid, SuggestionRow } from "@/app/compone
 import { CaregiverCredits } from "@/app/components/caregiver-credits";
 import { categories, type CategoryId, type Tile } from "@/app/data/tiles";
 import { interactionNow, recordInteractionMetric } from "@/app/lib/interaction-metrics";
+import {
+  buildCandidates,
+  rankFallback,
+  stripHash,
+  tilesForPrediction,
+  type PredictionItem,
+  type PredictionResponse,
+} from "@/app/lib/predictions";
 import { prepareSpeechVoices, speakText } from "@/app/lib/speech";
-import { recordTileUse } from "@/app/lib/tile-usage";
+import {
+  getTileUsage,
+  markSuggestedTileTapped,
+  createPredictionId,
+  recordPrediction,
+  recordTileUse,
+  type StoredTileUsage,
+} from "@/app/lib/tile-usage";
 
 const DEFAULT_SPEECH_LANGUAGE = "en-US" as const;
 
@@ -14,8 +29,20 @@ export default function Home() {
   const [selectedTiles, setSelectedTiles] = useState<Tile[]>([]);
   const [activeCategory, setActiveCategory] = useState<CategoryId>("food");
   const [caregiverMode, setCaregiverMode] = useState(false);
+  const [suggestionItems, setSuggestionItems] = useState<PredictionItem[]>([]);
   const caregiverTapCount = useRef(0);
   const stripTapStartedAt = useRef<number | null>(null);
+  const requestAbort = useRef<AbortController | null>(null);
+  const predictionSequence = useRef(0);
+  const currentStripHash = useRef("");
+  const predictionLogId = useRef<string | null>(null);
+
+  const selectedIds = useMemo(() => selectedTiles.map((tile) => tile.id), [selectedTiles]);
+  const currentHash = useMemo(() => stripHash(selectedIds), [selectedIds]);
+
+  useLayoutEffect(() => {
+    currentStripHash.current = currentHash;
+  }, [currentHash]);
 
   useEffect(() => {
     void prepareSpeechVoices();
@@ -29,6 +56,79 @@ export default function Home() {
     recordInteractionMetric("tap_to_strip", startedAt);
   }, [selectedTiles]);
 
+  useEffect(() => {
+    const sequence = predictionSequence.current;
+    const controller = new AbortController();
+    requestAbort.current = controller;
+    const fallbackCandidates = buildCandidates({}, selectedIds);
+
+    const showPrediction = (items: PredictionItem[], source: "model" | "fallback") => {
+      if (predictionSequence.current !== sequence || currentStripHash.current !== currentHash) return;
+
+      setSuggestionItems(items);
+      const predictionId = createPredictionId();
+      predictionLogId.current = predictionId;
+      void recordPrediction({
+        id: predictionId,
+        strip_ids: [...selectedIds],
+        strip_hash: currentHash,
+        items,
+        source,
+      })
+        .catch(() => {
+          // Prediction records are a caregiver asset, never a child-facing failure.
+        });
+    };
+
+    // Show a deterministic board-local answer before IndexedDB or the network respond.
+    showPrediction(rankFallback(fallbackCandidates, selectedIds), "fallback");
+
+    async function predict() {
+      let usage: Record<string, StoredTileUsage> = {};
+      try {
+        usage = await getTileUsage(fallbackCandidates.map((candidate) => candidate.id));
+      } catch {
+        // Private storage may be unavailable; the in-memory fallback above is enough.
+      }
+
+      if (predictionSequence.current !== sequence || currentStripHash.current !== currentHash) return;
+
+      const candidates = buildCandidates(usage, selectedIds);
+      const usageFallback = rankFallback(candidates, selectedIds);
+      showPrediction(usageFallback, "fallback");
+
+      try {
+        const response = await fetch("/api/board", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            strip_ids: selectedIds,
+            strip_hash: currentHash,
+            candidates,
+            scene: null,
+            hour_local: new Date().getHours(),
+          }),
+          signal: controller.signal,
+        });
+        const prediction = (await response.json()) as PredictionResponse;
+
+        if (
+          prediction.source === "model" &&
+          Array.isArray(prediction.items) &&
+          predictionSequence.current === sequence &&
+          currentStripHash.current === currentHash
+        ) {
+          showPrediction(prediction.items.slice(0, 4), "model");
+        }
+      } catch {
+        // Offline, timed-out, and rate-limited requests retain the local fallback silently.
+      }
+    }
+
+    void predict();
+    return () => controller.abort();
+  }, [currentHash, selectedIds]);
+
   const spokenText = useMemo(
     () =>
       selectedTiles
@@ -37,7 +137,16 @@ export default function Home() {
     [selectedTiles],
   );
 
+  function invalidatePrediction() {
+    predictionSequence.current += 1;
+    requestAbort.current?.abort();
+    requestAbort.current = null;
+    predictionLogId.current = null;
+    setSuggestionItems([]);
+  }
+
   function addTile(tile: Tile) {
+    invalidatePrediction();
     stripTapStartedAt.current = interactionNow();
     setSelectedTiles((current) => [...current, tile]);
     void recordTileUse(tile.id).catch(() => {
@@ -45,11 +154,23 @@ export default function Home() {
     });
   }
 
+  function addSuggestedTile(tile: Tile) {
+    const logId = predictionLogId.current;
+    if (logId) {
+      void markSuggestedTileTapped(logId, tile.id).catch(() => {
+        // A failed caregiver log must never change a child's tap.
+      });
+    }
+    addTile(tile);
+  }
+
   function removeLastTile() {
+    invalidatePrediction();
     setSelectedTiles((current) => current.slice(0, -1));
   }
 
   function clearSentence() {
+    invalidatePrediction();
     setSelectedTiles([]);
     window.speechSynthesis?.cancel();
   }
@@ -130,7 +251,10 @@ export default function Home() {
         </div>
       </section>
 
-      <SuggestionRow suggestions={[]} onAdd={addTile} />
+      <SuggestionRow
+        suggestions={tilesForPrediction(suggestionItems)}
+        onSuggestionTap={addSuggestedTile}
+      />
 
       <section className="board-section" aria-labelledby="core-heading">
         <div className="section-heading">
