@@ -145,3 +145,15 @@ bundled tile audio reachable without environment keys
 ```
 
 The temporary localhost server was stopped after the check. This verifies the stock board and bundled tile-audio path work from a clean clone without API keys; browser audio output itself remains subject to the judge device’s normal media settings.
+
+After publication, the actual public remote was independently checked:
+
+```text
+$ git clone --depth 1 https://github.com/oshokharbanda/mynah-aac.git <temporary directory>
+main
+f008ea81624c7feab20d49b61f1cb98bdc4b1cf5
+
+$ npm install && npm run build
+added 359 packages
+Compiled successfully; TypeScript passed; static pages generated successfully.
+```
