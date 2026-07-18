@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { NextRequest, NextResponse } from "next/server";
+import { coreTiles, type Tile } from "@/app/data/tiles";
 
 export const runtime = "nodejs";
 
@@ -7,6 +8,7 @@ const MODEL = "gpt-5.6";
 const REQUEST_TIMEOUT_MS = 900;
 const DEFAULT_RATE_LIMIT = 20;
 const DEFAULT_DAILY_CEILING = 500;
+const MAX_CACHE_ENTRIES = 500;
 
 const systemPrompt = `You rank vocabulary tiles for a child using an AAC communication board.
 The child is 2-10 years old, non-speaking, and building a sentence by tapping.
@@ -36,26 +38,28 @@ Return only the specified JSON.`;
 
 type Candidate = {
   id: string;
-  part_of_speech: string;
   label_en: string;
-  speech_en: string;
+  part_of_speech: Tile["part_of_speech"];
   origin: "core" | "personal" | "ai_candidate";
-  approved: boolean;
-  usage: { count: number; last_used_at: number | null };
+  usage_count: number;
 };
 
 type BoardRequest = {
-  strip_ids: string[];
-  strip_hash: string;
+  strip: Tile[];
   candidates: Candidate[];
-  scene: string | null;
-  hour_local: number;
+  scene: "home" | "meal" | "school" | "park" | "bedtime";
+  local_time: string;
 };
 
 const requestBuckets = new Map<string, { count: number; resetAt: number }>();
+const predictionCache = new Map<string, Array<{ tile_id: string; rank: number; reason: string }>>();
 let dailyCount = 0;
 let dailyDate = "";
 const guardedCandidateIds = new Set(["hurt", "sad", "angry", "scared", "tired"]);
+const coreTileIds = new Set(coreTiles.map((tile) => tile.id));
+const partOfSpeech = new Set<Tile["part_of_speech"]>([
+  "pronoun", "verb", "noun", "adjective", "social", "question", "negation", "preposition", "determiner",
+]);
 
 function configuredPositiveInt(value: string | undefined, fallback: number) {
   const parsed = Number.parseInt(value ?? "", 10);
@@ -99,48 +103,71 @@ function isCandidate(value: unknown): value is Candidate {
   const candidate = value as Partial<Candidate>;
   return (
     isString(candidate.id, 80) &&
-    isString(candidate.part_of_speech, 32) &&
+    typeof candidate.part_of_speech === "string" && partOfSpeech.has(candidate.part_of_speech as Tile["part_of_speech"]) &&
     isString(candidate.label_en, 80) &&
-    isString(candidate.speech_en, 120) &&
     (candidate.origin === "core" || candidate.origin === "personal" || candidate.origin === "ai_candidate") &&
-    candidate.approved === true &&
-    Boolean(candidate.usage) &&
-    typeof candidate.usage?.count === "number" &&
-    Number.isFinite(candidate.usage.count) &&
-    (candidate.usage.last_used_at === null || typeof candidate.usage.last_used_at === "number")
+    typeof candidate.usage_count === "number" &&
+    Number.isFinite(candidate.usage_count) &&
+    candidate.usage_count >= 0
   );
+}
+
+function isTile(value: unknown): value is Tile {
+  if (!value || typeof value !== "object") return false;
+  const tile = value as Partial<Tile>;
+  return (
+    isString(tile.id, 80) &&
+    isString(tile.label_en, 80) &&
+    typeof tile.part_of_speech === "string" &&
+    partOfSpeech.has(tile.part_of_speech as Tile["part_of_speech"])
+  );
+}
+
+function isScene(value: unknown): value is BoardRequest["scene"] {
+  return value === "home" || value === "meal" || value === "school" || value === "park" || value === "bedtime";
+}
+
+function stableHash(value: string) {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return (hash >>> 0).toString(16);
+}
+
+function cacheKey(request: BoardRequest) {
+  const lastTwo = request.strip.slice(-2).map((tile) => tile.id).join("\u001f");
+  const personalVocabulary = request.candidates
+    .filter((candidate) => candidate.origin === "personal")
+    .map((candidate) => candidate.id)
+    .sort()
+    .join("\u001f");
+  return stableHash(`${lastTwo}|${request.scene}|${personalVocabulary}`);
 }
 
 function parseRequest(value: unknown): BoardRequest | null {
   if (!value || typeof value !== "object") return null;
   const body = value as Partial<BoardRequest>;
   if (
-    !Array.isArray(body.strip_ids) ||
-    !body.strip_ids.every((id) => isString(id, 80)) ||
-    typeof body.strip_hash !== "string" ||
-    body.strip_hash.length > 4_000 ||
+    !Array.isArray(body.strip) ||
+    body.strip.length > 32 ||
+    !body.strip.every(isTile) ||
     !Array.isArray(body.candidates) ||
     body.candidates.length > 120 ||
     !body.candidates.every(isCandidate) ||
-    !(body.scene === null || isString(body.scene, 40)) ||
-    typeof body.hour_local !== "number" ||
-    !Number.isInteger(body.hour_local) ||
-    body.hour_local < 0 ||
-    body.hour_local > 23
+    !isScene(body.scene) ||
+    !/^([01]\d|2[0-3]):[0-5]\d$/.test(body.local_time ?? "")
   ) {
     return null;
   }
 
-  const stripIds = body.strip_ids;
   const uniqueCandidateIds = new Set(body.candidates.map((candidate) => candidate.id));
-  if (
-    uniqueCandidateIds.size !== body.candidates.length ||
-    stripIds.join("\u001f") !== body.strip_hash
-  ) {
+  if (uniqueCandidateIds.size !== body.candidates.length || body.candidates.some((candidate) => coreTileIds.has(candidate.id))) {
     return null;
   }
 
-  const hasDistressContext = stripIds.some((id) => guardedCandidateIds.has(id));
+  const hasDistressContext = body.strip.some((tile) => guardedCandidateIds.has(tile.id));
   return {
     ...(body as BoardRequest),
     candidates: body.candidates.filter(
@@ -151,22 +178,26 @@ function parseRequest(value: unknown): BoardRequest | null {
 
 function fallback(reason: string) {
   console.warn(`[mynah/board] ${reason}; client fallback remains active.`);
-  return NextResponse.json({ items: [], source: "fallback" as const });
+  return NextResponse.json({ suggestions: [] }, { headers: { "x-mynah-source": "fallback" } });
 }
 
 function validateModelItems(value: unknown, request: BoardRequest) {
-  const result = value as { items?: unknown };
-  if (!Array.isArray(result?.items)) return [];
+  const result = value as { suggestions?: unknown };
+  if (!Array.isArray(result?.suggestions)) return [];
 
   const allowedIds = new Set(request.candidates.map((candidate) => candidate.id));
-  const selectedIds = new Set(request.strip_ids);
+  const selectedIds = new Set(request.strip.map((tile) => tile.id));
   const uniqueIds = new Set<string>();
 
-  return result.items.flatMap((item) => {
+  return result.suggestions.flatMap((item) => {
     if (!item || typeof item !== "object") return [];
-    const { tile_id, reason } = item as { tile_id?: unknown; reason?: unknown };
+    const { tile_id, rank, reason } = item as { tile_id?: unknown; rank?: unknown; reason?: unknown };
     if (
       !isString(tile_id, 80) ||
+      typeof rank !== "number" ||
+      !Number.isInteger(rank) ||
+      rank < 1 ||
+      rank > 4 ||
       !isString(reason, 80) ||
       !allowedIds.has(tile_id) ||
       selectedIds.has(tile_id) ||
@@ -176,13 +207,26 @@ function validateModelItems(value: unknown, request: BoardRequest) {
     }
 
     uniqueIds.add(tile_id);
-    return [{ tile_id, reason }];
-  }).slice(0, 4);
+    return [{ tile_id, rank, reason }];
+  }).sort((left, right) => left.rank - right.rank).slice(0, 4);
+}
+
+function cachePrediction(key: string, suggestions: Array<{ tile_id: string; rank: number; reason: string }>) {
+  if (predictionCache.size >= MAX_CACHE_ENTRIES) {
+    const oldestKey = predictionCache.keys().next().value;
+    if (oldestKey) predictionCache.delete(oldestKey);
+  }
+  predictionCache.set(key, suggestions);
 }
 
 export async function POST(request: NextRequest) {
   const body = parseRequest(await request.json().catch(() => null));
   if (!body) return fallback("invalid request");
+
+  const cached = predictionCache.get(cacheKey(body));
+  if (cached) {
+    return NextResponse.json({ suggestions: cached }, { headers: { "x-mynah-source": "cache" } });
+  }
 
   const permission = mayUseModel(request);
   if (!permission.allowed) return fallback(permission.reason);
@@ -199,9 +243,13 @@ export async function POST(request: NextRequest) {
       instructions: systemPrompt,
       input: JSON.stringify({
         CANDIDATES: body.candidates,
-        CURRENT_STRIP: body.strip_ids,
+        CURRENT_STRIP: body.strip.map((tile) => ({
+          id: tile.id,
+          label_en: tile.label_en,
+          part_of_speech: tile.part_of_speech,
+        })),
         SCENE: body.scene,
-        HOUR_LOCAL: body.hour_local,
+        LOCAL_TIME: body.local_time,
       }),
       text: {
         format: {
@@ -211,17 +259,18 @@ export async function POST(request: NextRequest) {
           schema: {
             type: "object",
             additionalProperties: false,
-            required: ["items"],
+            required: ["suggestions"],
             properties: {
-              items: {
+              suggestions: {
                 type: "array",
                 maxItems: 4,
                 items: {
                   type: "object",
                   additionalProperties: false,
-                  required: ["tile_id", "reason"],
+                  required: ["tile_id", "rank", "reason"],
                   properties: {
                     tile_id: { type: "string" },
+                    rank: { type: "integer", minimum: 1, maximum: 4 },
                     reason: { type: "string", maxLength: 80 },
                   },
                 },
@@ -233,7 +282,9 @@ export async function POST(request: NextRequest) {
     }, { signal: controller.signal });
 
     const parsed = JSON.parse(response.output_text);
-    return NextResponse.json({ items: validateModelItems(parsed, body), source: "model" as const });
+    const suggestions = validateModelItems(parsed, body);
+    cachePrediction(cacheKey(body), suggestions);
+    return NextResponse.json({ suggestions }, { headers: { "x-mynah-source": "model" } });
   } catch (error) {
     const reason = error instanceof Error && error.name === "AbortError" ? "model timeout" : "model request failed";
     return fallback(reason);

@@ -39,3 +39,11 @@
 - IndexedDB schema is now version 2. It retains tile usage and adds prediction records with strip state, items/reasons, source (`fallback` or `model`), and a subsequently tapped suggestion ID. Prediction writes are queued so a very fast suggestion tap is still attributed after its record is stored.
 - Verified production lint and build pass. In a local production run, the fallback rendered immediately; after tapping `I` then `want`, the strip read `Speak: I want` and the suggestion row contained noun tiles (`apple`, `baby`, `ball`, `banana`). The automated browser environment does not expose IndexedDB, so persistence content still requires a physical-device verification.
 - Verified the no-key route contract with a loopback production POST: it returned `{"items":[],"source":"fallback"}` without exposing an error. A local UI check then selected `apple` from the row and produced `Speak: I want apple`; core tile count remained 24.
+
+## 2026-07-18 — Prediction contract and cache revision
+
+- Revised the payload to `strip: Tile[]`, fringe/personal-only candidates (`id`, `label_en`, `part_of_speech`, `origin`, `usage_count`), scene, and `HH:MM` local time. Core IDs are rejected server-side even if a public request tries to submit one.
+- Revised Structured Outputs to the required strict `{ suggestions: [{ tile_id, rank, reason }] }` schema. Returned IDs are validated against the sent candidates, unknown/current/duplicate IDs are dropped, and suggestions are rendered in rank order.
+- Retained the monotonic request sequence, full-strip hash, immediate abort on every strip change, and stale-response rejection. They are request metadata while the JSON body remains exactly the public contract.
+- Added bounded client and server caches keyed by last two IDs + scene + personal-vocabulary IDs. The vocabulary component makes cached paths invalidate automatically when a caregiver adds a personal tile.
+- Verified lint and production build pass. Loopback POST with the exact new payload returned `200`, `x-mynah-source: fallback`, and `{"suggestions":[]}` with no API key. A core ID supplied as a candidate received the same silent fallback and was not eligible for prediction. In the local production UI, `I → want` retained a non-empty noun fallback row (`apple`, `baby`, `ball`, `banana`) while the fixed core grid stayed at 24 tiles.

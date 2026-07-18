@@ -1,27 +1,37 @@
-import { allTiles, type Tile } from "@/app/data/tiles";
+import { allTiles, fringeTiles, type Tile } from "@/app/data/tiles";
 import type { StoredTileUsage } from "@/app/lib/tile-usage";
 
 export type PredictionItem = {
   tile_id: string;
+  rank: number;
   reason: string;
 };
 
-export type PredictionResponse = {
-  items: PredictionItem[];
-  source: "model" | "fallback";
+export type BoardPredictionResponse = {
+  suggestions: PredictionItem[];
 };
 
-export type PredictionCandidate = Pick<
-  Tile,
-  "id" | "part_of_speech" | "label_en" | "speech_en" | "origin" | "approved"
-> & {
-  usage: StoredTileUsage;
+export type PredictionCandidate = {
+  id: string;
+  label_en: string;
+  part_of_speech: Tile["part_of_speech"];
+  origin: Tile["origin"];
+  usage_count: number;
 };
 
 const guardedTileIds = new Set(["hurt", "sad", "angry", "scared", "tired"]);
 
+function stableHash(value: string) {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return (hash >>> 0).toString(16);
+}
+
 export function stripHash(tileIds: readonly string[]) {
-  return tileIds.join("\u001f");
+  return stableHash(tileIds.join("\u001f"));
 }
 
 export function isDistressContext(stripIds: readonly string[]) {
@@ -35,7 +45,7 @@ export function buildCandidates(
   const hasDistressTopic = isDistressContext(stripIds);
   const selected = new Set(stripIds);
 
-  return allTiles
+  return fringeTiles
     .filter(
       (tile) =>
         tile.approved &&
@@ -46,10 +56,8 @@ export function buildCandidates(
       id: tile.id,
       part_of_speech: tile.part_of_speech,
       label_en: tile.label_en,
-      speech_en: tile.speech_en,
       origin: tile.origin,
-      approved: tile.approved,
-      usage: usage[tile.id] ?? { id: tile.id, count: 0, last_used_at: null },
+      usage_count: usage[tile.id]?.count ?? 0,
     }));
 }
 
@@ -77,7 +85,7 @@ export function rankFallback(
   const lastId = stripIds.at(-1);
   const lastTile = allTiles.find((tile) => tile.id === lastId);
   const scored = candidates.map((tile) => {
-    let score = Math.min(tile.usage.count, 100) * 10;
+    let score = Math.min(tile.usage_count, 100) * 10;
 
     if (!lastTile) score += 20;
     if (lastTile?.id === "i" && tile.part_of_speech === "verb") score += 1_000;
@@ -91,12 +99,31 @@ export function rankFallback(
   return scored
     .sort((left, right) => right.score - left.score || left.tile.id.localeCompare(right.tile.id))
     .slice(0, 4)
-    .map(({ tile }) => ({ tile_id: tile.id, reason: fallbackReason(lastTile, tile) }));
+    .map(({ tile }, index) => ({
+      tile_id: tile.id,
+      rank: index + 1,
+      reason: fallbackReason(lastTile, tile),
+    }));
 }
 
 export function tilesForPrediction(items: readonly PredictionItem[]) {
-  const tilesById = new Map(allTiles.map((tile) => [tile.id, tile]));
+  const tilesById = new Map(fringeTiles.map((tile) => [tile.id, tile]));
   return items
     .map((item) => tilesById.get(item.tile_id))
     .filter((tile): tile is Tile => Boolean(tile));
+}
+
+export function predictionCacheKey(
+  stripIds: readonly string[],
+  scene: string,
+  candidates: readonly PredictionCandidate[],
+) {
+  const lastTwo = stripIds.slice(-2).join("\u001f");
+  const personalVocabulary = candidates
+    .filter((candidate) => candidate.origin === "personal")
+    .map((candidate) => candidate.id)
+    .sort()
+    .join("\u001f");
+
+  return stableHash(`${lastTwo}|${scene}|${personalVocabulary}`);
 }

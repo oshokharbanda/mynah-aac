@@ -11,8 +11,8 @@ export type StoredPrediction = {
   created_at: number;
   strip_ids: string[];
   strip_hash: string;
-  items: Array<{ tile_id: string; reason: string }>;
-  source: "model" | "fallback";
+  items: Array<{ tile_id: string; rank: number; reason: string }>;
+  source: "model" | "cache" | "fallback";
   tapped_suggestion_id: string | null;
 };
 

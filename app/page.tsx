@@ -3,15 +3,16 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CategoryTabs, CoreGrid, FringeGrid, SuggestionRow } from "@/app/components/board";
 import { CaregiverCredits } from "@/app/components/caregiver-credits";
-import { categories, type CategoryId, type Tile } from "@/app/data/tiles";
+import { categories, fringeTiles, type CategoryId, type Tile } from "@/app/data/tiles";
 import { interactionNow, recordInteractionMetric } from "@/app/lib/interaction-metrics";
 import {
   buildCandidates,
+  predictionCacheKey,
   rankFallback,
   stripHash,
   tilesForPrediction,
+  type BoardPredictionResponse,
   type PredictionItem,
-  type PredictionResponse,
 } from "@/app/lib/predictions";
 import { prepareSpeechVoices, speakText } from "@/app/lib/speech";
 import {
@@ -24,21 +25,37 @@ import {
 } from "@/app/lib/tile-usage";
 
 const DEFAULT_SPEECH_LANGUAGE = "en-US" as const;
+const DEFAULT_SCENE = "home" as const;
+
+type CachedPrediction = {
+  items: PredictionItem[];
+  source: "model" | "cache" | "fallback";
+};
 
 export default function Home() {
   const [selectedTiles, setSelectedTiles] = useState<Tile[]>([]);
   const [activeCategory, setActiveCategory] = useState<CategoryId>("food");
   const [caregiverMode, setCaregiverMode] = useState(false);
   const [suggestionItems, setSuggestionItems] = useState<PredictionItem[]>([]);
+  const [usageByTile, setUsageByTile] = useState<Record<string, StoredTileUsage>>({});
   const caregiverTapCount = useRef(0);
   const stripTapStartedAt = useRef<number | null>(null);
   const requestAbort = useRef<AbortController | null>(null);
   const predictionSequence = useRef(0);
   const currentStripHash = useRef("");
   const predictionLogId = useRef<string | null>(null);
+  const predictionCache = useRef(new Map<string, CachedPrediction>());
 
   const selectedIds = useMemo(() => selectedTiles.map((tile) => tile.id), [selectedTiles]);
   const currentHash = useMemo(() => stripHash(selectedIds), [selectedIds]);
+  const candidates = useMemo(
+    () => buildCandidates(usageByTile, selectedIds),
+    [selectedIds, usageByTile],
+  );
+  const cacheKey = useMemo(
+    () => predictionCacheKey(selectedIds, DEFAULT_SCENE, candidates),
+    [candidates, selectedIds],
+  );
 
   useLayoutEffect(() => {
     currentStripHash.current = currentHash;
@@ -46,6 +63,14 @@ export default function Home() {
 
   useEffect(() => {
     void prepareSpeechVoices();
+  }, []);
+
+  useEffect(() => {
+    void getTileUsage(fringeTiles.map((tile) => tile.id))
+      .then(setUsageByTile)
+      .catch(() => {
+        // The deterministic zero-use fallback remains available without private storage.
+      });
   }, []);
 
   useLayoutEffect(() => {
@@ -60,19 +85,24 @@ export default function Home() {
     const sequence = predictionSequence.current;
     const controller = new AbortController();
     requestAbort.current = controller;
-    const fallbackCandidates = buildCandidates({}, selectedIds);
 
-    const showPrediction = (items: PredictionItem[], source: "model" | "fallback") => {
-      if (predictionSequence.current !== sequence || currentStripHash.current !== currentHash) return;
+    const showPrediction = (items: PredictionItem[], source: CachedPrediction["source"]) => {
+      if (
+        controller.signal.aborted ||
+        predictionSequence.current !== sequence ||
+        currentStripHash.current !== currentHash
+      ) return;
 
-      setSuggestionItems(items);
+      const orderedItems = [...items].sort((left, right) => left.rank - right.rank).slice(0, 4);
+      if (!orderedItems.length) return;
+      setSuggestionItems(orderedItems);
       const predictionId = createPredictionId();
       predictionLogId.current = predictionId;
       void recordPrediction({
         id: predictionId,
         strip_ids: [...selectedIds],
         strip_hash: currentHash,
-        items,
+        items: orderedItems,
         source,
       })
         .catch(() => {
@@ -80,45 +110,45 @@ export default function Home() {
         });
     };
 
-    // Show a deterministic board-local answer before IndexedDB or the network respond.
-    showPrediction(rankFallback(fallbackCandidates, selectedIds), "fallback");
+    // The usage-count fallback is always first and never leaves a child-facing empty state.
+    showPrediction(rankFallback(candidates, selectedIds), "fallback");
+
+    const cached = predictionCache.current.get(cacheKey);
+    if (cached) {
+      showPrediction(cached.items, "cache");
+      return () => controller.abort();
+    }
 
     async function predict() {
-      let usage: Record<string, StoredTileUsage> = {};
-      try {
-        usage = await getTileUsage(fallbackCandidates.map((candidate) => candidate.id));
-      } catch {
-        // Private storage may be unavailable; the in-memory fallback above is enough.
-      }
-
-      if (predictionSequence.current !== sequence || currentStripHash.current !== currentHash) return;
-
-      const candidates = buildCandidates(usage, selectedIds);
-      const usageFallback = rankFallback(candidates, selectedIds);
-      showPrediction(usageFallback, "fallback");
-
       try {
         const response = await fetch("/api/board", {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: {
+            "content-type": "application/json",
+            "x-mynah-request-sequence": String(sequence),
+            "x-mynah-strip-hash": currentHash,
+          },
           body: JSON.stringify({
-            strip_ids: selectedIds,
-            strip_hash: currentHash,
+            strip: selectedTiles,
             candidates,
-            scene: null,
-            hour_local: new Date().getHours(),
+            scene: DEFAULT_SCENE,
+            local_time: new Date().toTimeString().slice(0, 5),
           }),
           signal: controller.signal,
         });
-        const prediction = (await response.json()) as PredictionResponse;
+        const prediction = (await response.json()) as BoardPredictionResponse;
+        const source = response.headers.get("x-mynah-source");
 
         if (
-          prediction.source === "model" &&
-          Array.isArray(prediction.items) &&
+          (source === "model" || source === "cache" || source === "fallback") &&
+          Array.isArray(prediction.suggestions) &&
+          !controller.signal.aborted &&
           predictionSequence.current === sequence &&
           currentStripHash.current === currentHash
         ) {
-          showPrediction(prediction.items.slice(0, 4), "model");
+          const responseSource = source as CachedPrediction["source"];
+          predictionCache.current.set(cacheKey, { items: prediction.suggestions.slice(0, 4), source: responseSource });
+          if (responseSource !== "fallback") showPrediction(prediction.suggestions, responseSource);
         }
       } catch {
         // Offline, timed-out, and rate-limited requests retain the local fallback silently.
@@ -127,7 +157,7 @@ export default function Home() {
 
     void predict();
     return () => controller.abort();
-  }, [currentHash, selectedIds]);
+  }, [cacheKey, candidates, currentHash, selectedIds, selectedTiles]);
 
   const spokenText = useMemo(
     () =>
@@ -137,21 +167,33 @@ export default function Home() {
     [selectedTiles],
   );
 
-  function invalidatePrediction() {
+  function invalidatePrediction(nextTiles: Tile[]) {
     predictionSequence.current += 1;
     requestAbort.current?.abort();
     requestAbort.current = null;
     predictionLogId.current = null;
-    setSuggestionItems([]);
+    const nextIds = nextTiles.map((tile) => tile.id);
+    setSuggestionItems(rankFallback(buildCandidates(usageByTile, nextIds), nextIds));
   }
 
   function addTile(tile: Tile) {
-    invalidatePrediction();
+    const nextTiles = [...selectedTiles, tile];
+    invalidatePrediction(nextTiles);
     stripTapStartedAt.current = interactionNow();
-    setSelectedTiles((current) => [...current, tile]);
-    void recordTileUse(tile.id).catch(() => {
-      // Usage history is helpful later, but must never block a child's tap.
-    });
+    setSelectedTiles(nextTiles);
+    setUsageByTile((current) => ({
+      ...current,
+      [tile.id]: {
+        id: tile.id,
+        count: (current[tile.id]?.count ?? 0) + 1,
+        last_used_at: Date.now(),
+      },
+    }));
+    void recordTileUse(tile.id)
+      .then((usage) => setUsageByTile((current) => ({ ...current, [tile.id]: usage })))
+      .catch(() => {
+        // Usage history is helpful later, but must never block a child's tap.
+      });
   }
 
   function addSuggestedTile(tile: Tile) {
@@ -165,12 +207,13 @@ export default function Home() {
   }
 
   function removeLastTile() {
-    invalidatePrediction();
-    setSelectedTiles((current) => current.slice(0, -1));
+    const nextTiles = selectedTiles.slice(0, -1);
+    invalidatePrediction(nextTiles);
+    setSelectedTiles(nextTiles);
   }
 
   function clearSentence() {
-    invalidatePrediction();
+    invalidatePrediction([]);
     setSelectedTiles([]);
     window.speechSynthesis?.cancel();
   }
