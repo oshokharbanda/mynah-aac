@@ -49,7 +49,9 @@ export default function Home() {
   const [usageByTile, setUsageByTile] = useState<Record<string, StoredTileUsage>>({});
   const [voice, setVoice] = useState<VoiceId>(DEFAULT_VOICE);
   const [recentUtterances, setRecentUtterances] = useState<StoredUtterance[]>([]);
+  const [clearArmed, setClearArmed] = useState(false);
   const caregiverTapCount = useRef(0);
+  const clearConfirmTimer = useRef<number | null>(null);
   const stripTapStartedAt = useRef<number | null>(null);
   const requestAbort = useRef<AbortController | null>(null);
   const predictionSequence = useRef(0);
@@ -74,6 +76,10 @@ export default function Home() {
 
   useEffect(() => {
     void prepareSpeechVoices();
+  }, []);
+
+  useEffect(() => () => {
+    if (clearConfirmTimer.current !== null) window.clearTimeout(clearConfirmTimer.current);
   }, []);
 
   useEffect(() => {
@@ -200,6 +206,7 @@ export default function Home() {
   }
 
   function addTile(tile: Tile) {
+    disarmClear();
     const nextTiles = [...selectedTiles, tile];
     invalidatePrediction(nextTiles);
     stripTapStartedAt.current = interactionNow();
@@ -231,15 +238,39 @@ export default function Home() {
   }
 
   function removeLastTile() {
+    disarmClear();
     const nextTiles = selectedTiles.slice(0, -1);
     invalidatePrediction(nextTiles);
     setSelectedTiles(nextTiles);
   }
 
   function clearSentence() {
+    disarmClear();
     invalidatePrediction([]);
     setSelectedTiles([]);
     window.speechSynthesis?.cancel();
+  }
+
+  function disarmClear() {
+    if (clearConfirmTimer.current !== null) {
+      window.clearTimeout(clearConfirmTimer.current);
+      clearConfirmTimer.current = null;
+    }
+    setClearArmed(false);
+  }
+
+  function requestClear() {
+    if (!selectedTiles.length) return;
+    if (clearArmed) {
+      clearSentence();
+      return;
+    }
+    setClearArmed(true);
+    if (clearConfirmTimer.current !== null) window.clearTimeout(clearConfirmTimer.current);
+    clearConfirmTimer.current = window.setTimeout(() => {
+      clearConfirmTimer.current = null;
+      setClearArmed(false);
+    }, 4000);
   }
 
   function speakSentence() {
@@ -317,18 +348,6 @@ export default function Home() {
 
   return (
     <main className="app-shell">
-      <header className="app-header">
-        <button
-          className="caregiver-entry"
-          type="button"
-          onClick={openCaregiverMode}
-          aria-label="Caregiver tools"
-        >
-          MYNAH
-        </button>
-        <h1>Say it your way</h1>
-      </header>
-
       <CommunicationTools
         recentUtterances={recentUtterances}
         onSpeakPhrase={speakQuickPhrase}
@@ -355,10 +374,8 @@ export default function Home() {
                 </span>
               ))}
             </span>
-          ) : (
-            <span className="sentence-placeholder">Tap pictures to build a sentence</span>
-          )}
-          <span className="speak-hint">Tap here to speak</span>
+          ) : null}
+          <span className="speak-icon" aria-hidden="true">🔊</span>
         </button>
 
         <div className="sentence-actions" aria-label="Sentence actions">
@@ -367,16 +384,21 @@ export default function Home() {
             type="button"
             onClick={removeLastTile}
             disabled={selectedTiles.length === 0}
+            aria-label="Undo last word"
+            title="Undo last word"
           >
-            Undo
+            ↶
           </button>
           <button
             className="action-button action-button-clear"
             type="button"
-            onClick={clearSentence}
+            onClick={requestClear}
             disabled={selectedTiles.length === 0}
+            aria-label={clearArmed ? "Clear sentence now" : "Clear sentence. Tap again to confirm."}
+            aria-pressed={clearArmed}
+            title={clearArmed ? "Tap again to clear" : "Clear sentence"}
           >
-            Clear
+            ×
           </button>
         </div>
       </section>
@@ -386,13 +408,7 @@ export default function Home() {
         onSuggestionTap={addSuggestedTile}
       />
 
-      <section className="board-section" aria-labelledby="core-heading">
-        <div className="section-heading">
-          <div>
-            <p className="section-kicker">Always here</p>
-            <h2 id="core-heading">Core words</h2>
-          </div>
-        </div>
+      <section className="board-section core-section" aria-label="Core words">
         <CoreGrid onAdd={addTile} />
       </section>
 
@@ -412,7 +428,9 @@ export default function Home() {
       </section>
 
       <footer className="app-footer">
-        Symbols by ARASAAC · CC BY-NC-SA 4.0
+        <button className="caregiver-footer-entry" type="button" onClick={openCaregiverMode} aria-label="Caregiver tools">
+          Symbols by ARASAAC · CC BY-NC-SA 4.0
+        </button>
       </footer>
     </main>
   );

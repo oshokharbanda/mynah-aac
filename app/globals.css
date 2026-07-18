@@ -38,11 +38,7 @@ button:focus-visible {
 .app-shell {
   width: min(100%, 920px);
   margin: 0 auto;
-  padding: max(20px, env(safe-area-inset-top)) clamp(16px, 4vw, 32px) max(32px, env(safe-area-inset-bottom));
-}
-
-.app-header {
-  margin-bottom: 20px;
+  padding: max(14px, env(safe-area-inset-top)) clamp(16px, 4vw, 32px) max(24px, env(safe-area-inset-bottom));
 }
 
 .eyebrow,
@@ -53,28 +49,6 @@ button:focus-visible {
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-}
-
-.caregiver-entry {
-  min-height: 48px;
-  margin: -8px 0 -4px -8px;
-  border: 0;
-  background: transparent;
-  padding: 8px;
-  color: #49655f;
-  font-size: 0.78rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.app-header h1 {
-  margin: 4px 0 0;
-  font-size: clamp(1.85rem, 5vw, 2.5rem);
-  line-height: 1.05;
-  letter-spacing: -0.04em;
 }
 
 .communication-tools {
@@ -185,23 +159,25 @@ button:focus-visible {
 }
 
 .sentence-area {
-  display: grid;
-  gap: 12px;
-  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
 }
 
 .sentence-strip {
   display: flex;
-  min-height: 120px;
-  width: 100%;
-  flex-direction: column;
+  height: 66px;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: 10px;
   overflow: hidden;
   border: 3px solid #8eb6a8;
-  border-radius: 22px;
+  border-radius: 18px;
   background: var(--surface);
-  padding: 18px;
+  padding: 9px 12px;
   color: var(--ink);
   text-align: left;
   touch-action: manipulation;
@@ -215,42 +191,33 @@ button:focus-visible {
 
 .sentence-tiles {
   display: flex;
-  flex-wrap: wrap;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: nowrap;
   gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
 .sentence-word {
+  flex: 0 0 auto;
   border-radius: 12px;
   background: #e5f2ed;
-  padding: 9px 12px;
+  padding: 7px 10px;
   color: #153b32;
-  font-size: clamp(1.12rem, 4vw, 1.45rem);
+  font-size: clamp(1rem, 3.6vw, 1.24rem);
   font-weight: 800;
 }
 
-.sentence-placeholder {
-  align-self: center;
-  margin: auto 0;
-  color: #6a7775;
-  font-size: 1.12rem;
-  font-weight: 700;
-  text-align: center;
-}
-
-.speak-hint {
-  color: #385c52;
-  font-size: 0.88rem;
-  font-weight: 800;
-}
-
-.sentence-strip:disabled .speak-hint {
-  color: #71817d;
+.speak-icon {
+  flex: 0 0 auto;
+  font-size: 1.35rem;
 }
 
 .sentence-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .action-button,
@@ -265,18 +232,42 @@ button:focus-visible {
   -webkit-tap-highlight-color: transparent;
 }
 
+.action-button {
+  display: grid;
+  width: 46px;
+  min-height: 46px;
+  place-items: center;
+  border-radius: 14px;
+  padding: 0;
+  font-size: 1.65rem;
+  line-height: 1;
+}
+
 .action-button:disabled {
   border-color: #dfe6e4;
   color: #9aa6a2;
 }
 
 .action-button-clear {
+  width: 36px;
+  min-height: 36px;
   border-color: #d08a80;
   color: #7d3028;
+  font-size: 1.4rem;
+}
+
+.action-button-clear[aria-pressed="true"] {
+  border-color: #a3362c;
+  background: #ffe1dc;
+  color: #671f19;
 }
 
 .board-section {
-  margin-top: 32px;
+  margin-top: 24px;
+}
+
+.core-section {
+  margin-top: 0;
 }
 
 .section-heading {
@@ -296,7 +287,7 @@ button:focus-visible {
 .fringe-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(96px, 1fr));
-  gap: 16px;
+  gap: 12px;
 }
 
 .tile {
@@ -373,6 +364,16 @@ button:focus-visible {
   color: #62716d;
   font-size: 0.78rem;
   text-align: center;
+}
+
+.caregiver-footer-entry {
+  border: 0;
+  background: transparent;
+  padding: 10px;
+  color: inherit;
+  font: inherit;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .caregiver-screen {
@@ -482,8 +483,12 @@ button:focus-visible {
     padding-top: 32px;
   }
 
+  .core-grid {
+    grid-template-columns: repeat(4, minmax(96px, 1fr));
+  }
+
   .tile {
-    min-height: 152px;
+    min-height: 136px;
   }
 
   .tile img {
@@ -501,5 +506,101 @@ button:focus-visible {
 
   .urgent-phrases {
     grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .app-shell {
+    width: min(100%, 1024px);
+    padding: 12px 16px 24px;
+  }
+
+  .communication-tools {
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .attention-actions {
+    gap: 8px;
+    padding: 2px 0;
+  }
+
+  .attention-button,
+  .not-that-button {
+    min-height: 58px;
+    padding: 8px 14px;
+  }
+
+  .urgent-phrases {
+    gap: 6px;
+    border-radius: 14px;
+    padding: 6px;
+  }
+
+  .urgent-phrase {
+    min-height: 42px;
+    border-radius: 11px;
+    padding: 5px;
+    font-size: 0.88rem;
+  }
+
+  .sentence-area {
+    margin-bottom: 10px;
+  }
+
+  .sentence-strip {
+    height: 62px;
+  }
+
+  .suggestion-row {
+    margin-bottom: 10px;
+    border-radius: 14px;
+    padding: 8px;
+  }
+
+  .suggestion-row h2 {
+    margin-bottom: 4px;
+    font-size: 0.82rem;
+  }
+
+  .suggestion-tiles {
+    gap: 8px;
+  }
+
+  .suggestion-row .tile {
+    min-height: 72px;
+    grid-template-rows: minmax(34px, 1fr) auto;
+    border-radius: 13px;
+    padding: 4px;
+  }
+
+  .suggestion-row .tile img {
+    width: 42px;
+    height: 36px;
+  }
+
+  .suggestion-row .tile-label {
+    font-size: 0.78rem;
+  }
+
+  .core-grid {
+    grid-template-columns: repeat(6, minmax(96px, 1fr));
+    gap: 8px;
+  }
+
+  .core-grid .tile {
+    min-height: 86px;
+    grid-template-rows: minmax(42px, 1fr) auto;
+    border-radius: 15px;
+    padding: 5px;
+  }
+
+  .core-grid .tile img {
+    width: 48px;
+    height: 42px;
+  }
+
+  .core-grid .tile-label {
+    font-size: 0.86rem;
   }
 }

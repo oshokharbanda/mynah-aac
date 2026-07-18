@@ -63,3 +63,10 @@
 - Added an on-device, current-session-only “Say it again” history limited to five spoken utterances. Caregiver tools provide an explicit end-session action that clears it.
 - Generated 24 additional English-only ElevenLabs MP3s (eight whole utterances × three caregiver-selected voices), bringing the committed offline audio set to 204 files. They are included in service-worker cache version `mynah-core-v6`.
 - Verified `npm run lint`, the production Next.js build, service-worker syntax, the English-only source scan, and the generated clips’ 22.05kHz mono MP3 format.
+
+## 2026-07-19 — Core-grid fold correction
+
+- Reworked the fixed core grid by viewport: 3 columns × 8 rows on a phone, 4 × 6 on portrait tablet, and 6 × 4 at 1024px and above. The child-mode Mynah heading is removed entirely.
+- Measured the production build at exactly 1024 × 768: header 0px, quick communication controls 126px, sentence strip 62px, suggestions 115.69px, and core grid 368px (24 tiles at 156.16 × 86px). Including top padding and vertical gaps, the core grid ends at y=711.69px, leaving 56.31px visible with no scroll.
+- Sentence construction now stays in one fixed 66px row on a 390px phone viewport. Undo is a 46px inline icon; Clear is a visibly smaller 36px icon and requires a second tap within four seconds.
+- Verified the production build, lint, service-worker syntax, and rendered 3 × 8 / 4 × 6 / 6 × 4 breakpoint layouts through the local production server.
