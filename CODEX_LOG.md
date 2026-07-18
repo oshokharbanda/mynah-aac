@@ -121,3 +121,27 @@ Tracked dependency/build paths: 0
 ```
 
 The 32 initial textual references were source-code environment variable names (`OPENAI_API_KEY`, `ELEVENLABS_API_KEY`) and the literal HTTP header name `xi-api-key`, not credential values. `.gitignore` covers `.env*` (including `.env.local`) and local agent scratch files. `public/audio` has 207 committed MP3s and `public/symbols` has 60 committed PNGs.
+
+Fresh-clone verification was run from an isolated clone with no `.env.local`, `node_modules`, `.next`, or `.vercel` directory present at clone time:
+
+```text
+$ git clone --no-local <local source> /private/tmp/mynah-aac-fresh-C4n0fW
+$ npm install
+added 359 packages
+
+$ npm run build
+Compiled successfully; TypeScript passed; static pages generated successfully.
+
+$ npm run start -- -p 3100
+Ready on http://localhost:3100
+
+$ curl http://localhost:3100/
+200 18136
+board HTML contains caregiver entry
+
+$ curl http://localhost:3100/audio/en/sarah/i.mp3
+tile audio 200 1585
+bundled tile audio reachable without environment keys
+```
+
+The temporary localhost server was stopped after the check. This verifies the stock board and bundled tile-audio path work from a clean clone without API keys; browser audio output itself remains subject to the judge device’s normal media settings.
